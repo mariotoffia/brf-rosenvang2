@@ -1,0 +1,2071 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <title>BRF Rosenvång 2 - Kandidatpresentation (Valberedning)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    /* Minimal fallback-styling if CDN fails */
+    .container-fallback { max-width: 900px; margin: 0 auto; padding: 1rem; }
+    .card { border: 1px solid #e5e7eb; border-radius: 1rem; padding: 1.25rem; }
+    .count { font-size: 0.825rem; opacity: 0.8; }
+    .hint { font-size: 0.875rem; opacity: 0.9; }
+    .error { color: #b91c1c; }
+    .field-error {
+      border-left: 4px solid #dc2626;
+      background-color: #fef2f2;
+      padding-left: 1rem;
+      border-radius: 0.75rem;
+    }
+    .field-error input,
+    .field-error textarea,
+    .field-error select {
+      border-color: #dc2626 !important;
+      box-shadow: 0 0 0 1px #fecaca;
+    }
+    .field-error-note {
+      color: #b91c1c;
+      font-size: 0.875rem;
+      margin-top: 0.35rem;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <main class="container-fallback max-w-4xl mx-auto p-4">
+    <header class="mb-6">
+      <h1 class="text-2xl font-bold">Kandidatpresentation - Styrelse (BRF)</h1>
+      <p class="text-gray-600 mt-1">Fyll i enligt anvisningarna. Obligatoriska fält är markerade med <span class="text-red-600">*</span>.</p>
+    </header>
+
+    <!-- KORT INFO / ALERT -->
+    <div class="card bg-white shadow-sm mb-6">
+      <p class="hint">
+        Var vänlig och fyll i så noggrant som möjligt men försök vara så subjektiv och kortfattad som möjligt. Detta gör
+        urvalsprocessen enklare och mer rättvis för alla kandidater.
+      </p>
+      <p class="hint mt-2">
+        <strong>Dela:</strong> Använd dela-knappen för att skapa en länk med dina svar. Länken kan skickas till valberedningen.
+      </p>
+    </div>
+
+    <!-- FORM CARD -->
+    <section class="card bg-white shadow-sm">
+      <form id="brfForm" class="space-y-6" novalidate>
+        <!-- Dynamiskt injicerat innehåll från formConfig -->
+        <div id="formFields" class="space-y-6"></div>
+
+        <!-- ACTIONS -->
+        <div class="flex flex-col sm:flex-row gap-3 pt-2">
+          <button id="btnShare" type="button"
+                  class="inline-flex items-center justify-center rounded-xl px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 focus:outline-none">
+            Kopiera länk för delning
+          </button>
+          <button id="btnExportExcel" type="button"
+                  class="inline-flex items-center justify-center rounded-xl px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none">
+            Exportera till Excel
+          </button>
+
+          <button id="btnReset" type="button"
+                  class="inline-flex items-center justify-center rounded-xl px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 focus:outline-none">
+            Rensa formulär
+          </button>
+        </div>
+
+        <!-- Errors / State -->
+        <div id="errorBox" class="hidden rounded-lg border border-red-200 bg-red-50 p-3 text-red-800"></div>
+        <div id="okBox" class="hidden rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-800"></div>
+      </form>
+    </section>
+
+    <footer class="mt-10 text-center text-xs text-gray-500">
+      (c) 2025 Mario Toffia, BRF Rosenvång. Alla rättigheter förbehållna.
+    </footer>
+  </main>
+
+  <script>
+    const formConfig = {
+      fields: [
+        { id: "name", state: true, label: "1. Namn", type: "text", required: true, maxlength: 50, help: "Fullständigt namn." },
+        { id: "lgh", state: true, label: "2. Lägenhets-/bostadsnummer eller andel i föreningen", type: "text", required: true, maxlength: 20, help: "Exempel: 'Lgh 12' eller 'Andel 57'." },
+        { id: "email", state: true, label: "3. E-post", type: "email", required: true, maxlength: 100 },
+        { id: "phone", state: true, label: "3. Telefon", type: "tel", required: true, maxlength: 20 },
+
+        { id: "living", state: true, label: "4. Hur länge har du bott i föreningen?", type: "select", required: true,
+          options: [
+            { value: "< 1", text: "Mindre än 1 år" },
+            { value: "1-3", text: "1-3 år" },
+            { value: "4-10", text: "4-10 år" },
+            { value: "> 10", text: "Mer än 10 år" },
+          ]
+        },
+
+        {
+          id: "experiences_table",
+          state: true,
+          label: "5. Erfarenheter - period, var, roll och kompetens",
+          type: "multi-row",
+          required: true,
+          minRows: 0,
+          maxRows: 6,
+          columns: [
+            { id: "from", label: "Från", type: "date", required: true },
+            { id: "to", label: "Till", type: "date", required: true },
+            { id: "where", label: "Var", type: "text", required: true, maxlength: 40, placeholder: "BRF / organisation" },
+            { id: "role", label: "Roll", type: "text", required: true, maxlength: 40, placeholder: "T.ex. ledamot" },
+            { id: "competence", label: "Kompetens", type: "text", required: true, maxlength: 50, placeholder: "energi och optimering av uppvärmningskostnad" }
+          ],
+          help: "Lägg till en rad per uppdrag. Använd 'Lägg till rad' för fler uppdrag (max 6 rader)."
+        },
+
+        { id: "competences", state: true, label: "6. Kompetens (välj upp till två) + varför", type: "checkbox-group",
+          minChecked: 1,
+          maxChecked: 2,
+          options: [
+            { value: "ekonomi", text: "Ekonomi / budget" },
+            { value: "teknik", text: "Teknisk/byggnadskunskap" },
+            { value: "kommunikation", text: "Kommunikation / medlemskontakt" },
+            { value: "it", text: "Digitalisering / IT-system" },
+            { value: "juridik", text: "Juridik / stadgar" },
+            { value: "miljo", text: "Miljö" },
+            { value: "energi", text: "Energi & besparing" },
+            { value: "annat", text: "Annat (ange nedan)" },
+          ],
+          whyMaxlength: 180, // ~25-30 ord, visas per val
+          includeOtherText: true, otherTextId: "kompetens_annat_text", otherTextMaxlength: 25
+        },
+
+        { id: "interests", state: true, label: "7. Intresseområden (välj upp till två) + varför", type: "checkbox-group",
+          minChecked: 1,
+          maxChecked: 2,
+          options: [
+            { value: "ekonomi", text: "Ekonomi / budget" },
+            { value: "teknik", text: "Teknisk/byggnadskunskap" },
+            { value: "kommunikation", text: "Kommunikation / medlemskontakt" },
+            { value: "it", text: "Digitalisering / IT-system" },
+            { value: "juridik", text: "Juridik / stadgar" },
+            { value: "miljo", text: "Miljö" },
+            { value: "energi", text: "Energi & besparing" },
+            { value: "annat", text: "Annat (ange nedan)" },
+          ],
+          whyMaxlength: 180,
+          includeOtherText: true, otherTextId: "intresse_annat_text", otherTextMaxlength: 25
+        },
+
+        { id: "tid", state: true, label: "8. Tid per månad - Hur mycket tid kan du avsätta?", type: "select", required: true,
+          options: [
+            { value: "< 5", text: "Mindre än 5 timmar" },
+            { value: "5-10", text: "5-10 timmar" },
+            { value: "11-15", text: "11-15 timmar" },
+            { value: "> 15", text: "Mer än 15 timmar" },
+          ]
+        },
+
+        { id: "ovrigt", state: true, label: "9. Ytterligare kommentar", type: "textarea", required: false, maxlength: 300,
+          help: "Kort fakta (max ~50 ord).", rows: 3
+        },
+
+        { id: "konst_how_many", state: true, label: "A1. Hur många styrelseledamöter tycker du är optimalt i vår organisation?", type: "select", required: true,
+          options: [
+            { value: "7", text: "7" },
+            { value: "9", text: "9" },
+            { value: "11", text: "11" },
+            { value: "other", text: "Annat (ange antal nedan)" }
+          ],
+          help: "Om du väljer 'Annat', fyll i fältet nedan."
+        },
+
+        { id: "konst_how_many_other", state: true, label: "A1b. Annat antal (ange siffra)", type: "number", required: false,
+          min: 1, max: 50, step: 1, placeholder: "Ange antal styrelseledamöter",
+          help: "Ange endast om du valde 'Annat' ovan."
+        },
+
+        { id: "konst_term_length", state: true, label: "A2. Hur länge bör en mandatperiod för en styrelseledamot vara?", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 år" },
+            { value: "2", text: "2 år" },
+            { value: "3", text: "3 år" }
+          ],
+          help: "Beskriv önskad längd i år"
+        },
+
+        { id: "konst_reelection", state: true, label: "A3. Ska styrelseledamöter kunna omväljas? Ange antal mandatperioder i rad.", type: "select", required: true,
+          options: [
+            { value: "1", text: "Ja, max 1 mandatperiod" },
+            { value: "2", text: "Ja, max 2 mandatperioder" },
+            { value: "3", text: "Ja, max 3 mandatperioder" },
+            { value: "4", text: "Ja, max 4 mandatperioder" },
+            { value: "0", text: "Nej" }
+          ],
+          help: "Välj antal eller 'Nej' om omval inte ska vara möjligt."
+        },
+
+        { id: "konst_meeting_frequency", state: true, label: "A4. Vilken mötesfrekvens tycker du är lämplig för styrelsen?", type: "select", required: true,
+          options: [
+            { value: "veckovis", text: "Veckovis" },
+            { value: "månadsvis", text: "Månadsvis" },
+            { value: "kvartalsvis", text: "Kvartalsvis" },
+          ],
+          help: "Ange uppskattad frekvens, t.ex. månatligen."
+        },
+
+        { id: "konst_workload", state: true, label: "A5. Hur mycket arbetstid/resursinsats förväntar du dig från en styrelseledamot?", type: "select", required: true,
+          options: [
+            { value: "10", text: "10 timmar per kvartal" },
+            { value: "20", text: "20 timmar per kvartal" },
+            { value: "30", text: "30 timmar per kvartal" },
+            { value: "40", text: "40 timmar per kvartal" },
+            { value: "60", text: "60 timmar per kvartal" },
+          ],
+          help: "Beskriv uppskattad tidsåtgång per period."
+        },
+
+        { id: "role_key_tasks", state: true, label: "B6. Vilka är de viktigaste uppgifterna för vår styrelse, enligt dig (välj upp till tre)?", type: "checkbox-group",
+          minChecked: 1,
+          maxChecked: 3,
+          options: [
+            { value: "ekonomi", text: "Ekonomi / budget" },
+            { value: "teknik", text: "Teknisk/byggnadskunskap" },
+            { value: "kommunikation", text: "Kommunikation / medlemskontakt" },
+            { value: "it", text: "Digitalisering / IT-system" },
+            { value: "juridik", text: "Juridik / stadgar" },
+            { value: "miljo", text: "Miljö" },
+            { value: "energi", text: "Energi & besparing" },
+            { value: "annat", text: "Annat (ange nedan)" },
+          ],
+          whyMaxlength: 180,
+          includeOtherText: true, otherTextId: "role_key_tasks_other", otherTextMaxlength: 25
+        },
+
+        { id: "importance_finance", state: true, label: "B8a. Hur viktig är ekonomisk/finansiell kompetens för nya styrelseledamöter?", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 - Inte viktigt" },
+            { value: "2", text: "2" },
+            { value: "3", text: "3" },
+            { value: "4", text: "4" },
+            { value: "5", text: "5 - Mycket viktigt" }
+          ],
+          help: "Använd skala 1 (inte viktigt) till 5 (mycket viktigt)."
+        },
+
+        { id: "importance_legal", state: true, label: "B8b. Juridisk/regleringskompetens", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 - Inte viktigt" },
+            { value: "2", text: "2" },
+            { value: "3", text: "3" },
+            { value: "4", text: "4" },
+            { value: "5", text: "5 - Mycket viktigt" }
+          ]
+        },
+
+        { id: "importance_industry", state: true, label: "B8c. Kunskap Kring Drift & Underhåll av Stora byggnader", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 - Inte viktigt" },
+            { value: "2", text: "2" },
+            { value: "3", text: "3" },
+            { value: "4", text: "4" },
+            { value: "5", text: "5 - Mycket viktigt" }
+          ]
+        },
+
+        { id: "importance_tech", state: true, label: "B8d. Teknologisk/digital kompetens", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 - Inte viktigt" },
+            { value: "2", text: "2" },
+            { value: "3", text: "3" },
+            { value: "4", text: "4" },
+            { value: "5", text: "5 - Mycket viktigt" }
+          ]
+        },
+
+        { id: "importance_board", state: true, label: "B8e. Erfarenhet av styrelsearbete", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 - Inte viktigt" },
+            { value: "2", text: "2" },
+            { value: "3", text: "3" },
+            { value: "4", text: "4" },
+            { value: "5", text: "5 - Mycket viktigt" }
+          ]
+        },
+
+        { id: "importance_optimize", state: true, label: "B8f. Upphandling/Optimering", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 - Inte viktigt" },
+            { value: "2", text: "2" },
+            { value: "3", text: "3" },
+            { value: "4", text: "4" },
+            { value: "5", text: "5 - Mycket viktigt" }
+          ]
+        },
+
+        { id: "role_committee_expectations", state: true, label: "B9. Vilka förväntningar har du på styrelseledamotens deltagande i kommittéer?", type: "select", required: true,
+          options: [
+            { value: "inga", text: "Inga krav – deltagande är frivilligt" },
+            { value: "minst_en", text: "Minst en kommitté vid behov" },
+            { value: "aktiv_en", text: "Aktivt deltagande i minst en kommitté per år" },
+            { value: "flera", text: "Deltar löpande i flera kommittéer" },
+            { value: "ledande", text: "Bör kunna leda en kommitté eller projektgrupp" }
+          ]
+        },
+
+        { id: "role_integrity_expectations", state: true, label: "B10. Vilka krav bör finnas på styrelseledamotens integritet/intressekonflikter (välj upp till tre)?", type: "checkbox-group",
+          minChecked: 1,
+          maxChecked: 3,
+          options: [
+            { value: "oppet", text: "Öppenhet om eventuella intressekonflikter" },
+            { value: "inte_delta", text: "Avstå från beslut där egenintresse finns" },
+            { value: "tystnadsplikt", text: "Respektera tystnadsplikt och konfidentialitet" },
+            { value: "saklighet", text: "Agera sakligt och i föreningens bästa intresse" },
+            { value: "forbild", text: "Vara en förebild i etik och beteende" },
+            { value: "annat", text: "Annat (ange nedan)" }
+          ],
+          includeOtherText: true,
+          otherTextId: "role_integrity_expectations_other",
+          otherTextMaxlength: 60,
+          help: "Markera de krav du anser bör gälla för alla styrelseledamöter."
+        },
+
+        { id: "culture_diversity_importance", state: true, label: "C11. Hur viktigt är det med olika bakgrunder i styrelsen?", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 - Inte viktigt" },
+            { value: "2", text: "2" },
+            { value: "3", text: "3" },
+            { value: "4", text: "4" },
+            { value: "5", text: "5 - Mycket viktigt" }
+          ]
+        },
+
+       { id: "culture_valued_traits", state: true, label: "C12. Vilka egenskaper är mest värdefulla för god styrelsedynamik (välj upp till tre)?", type: "checkbox-group",
+          minChecked: 1,
+          maxChecked: 3,
+          options: [
+            { value: "kommunikativ", text: "Kommunikativ och lyhörd" },
+            { value: "samarbetsvillig", text: "Samarbetsvillig" },
+            { value: "strukturerad", text: "Strukturerad och pålitlig" },
+            { value: "analytisk", text: "Analytisk och problemlösande" },
+            { value: "respektfull", text: "Respektfull i diskussioner" },
+            { value: "beslutsam", text: "Beslutsam vid oenighet" },
+            { value: "annat", text: "Annat (ange nedan)" }
+          ],
+          includeOtherText: true,
+          otherTextId: "culture_valued_traits_other",
+          otherTextMaxlength: 60,
+          help: "Markera upp till fyra egenskaper du anser viktigast för ett effektivt styrelsearbete."
+        },
+
+        { id: "culture_network_expectation", state: true, label: "C13. I vilken utsträckning ska styrelseledamöter bidra med nätverkande/ambassadörskap?", type: "select", required: true,
+          options: [
+            { value: "1", text: "1 - Inte viktigt" },
+            { value: "2", text: "2" },
+            { value: "3", text: "3" },
+            { value: "4", text: "4" },
+            { value: "5", text: "5 - Mycket viktigt" }
+          ]
+        },
+
+        { id: "culture_conflict_handling", state: true, label: "C14. Hur ska styrelsen hantera meningsskiljaktigheter?", type: "checkbox-group",
+          minChecked: 1,
+          maxChecked: 4,
+          options: [
+            { value: "oppna_diskussioner", text: "Genom öppna och sakliga diskussioner" },
+            { value: "respekt", text: "Med respekt för olika åsikter" },
+            { value: "fakta", text: "Genom att utgå från fakta och beslutade mål" },
+            { value: "majoritetsbeslut", text: "Genom majoritetsbeslut efter diskussion" },
+            { value: "neutral_ledning", text: "Med stöd av neutral mötesledning" },
+            { value: "annat", text: "Annat (ange nedan)" }
+          ],
+          includeOtherText: true,
+          otherTextId: "culture_conflict_handling_other",
+          otherTextMaxlength: 60,
+          help: "Markera upp till fyra arbetssätt som du anser lämpliga vid oenighet i styrelsen."
+        },
+
+        { id: "motivation", state: true, label: "D15. Vad motiverar dig att bli styrelseledamot i vår organisation?", type: "textarea", required: true,
+          maxlength: 400, rows: 4
+        },
+
+        { id: "participation_limitations", state: true, label: "D16. Finns det omständigheter som kan påverka ditt deltagande?", type: "textarea", required: false,
+          maxlength: 350, rows: 4, help: "T.ex. andra uppdrag, geografiskt avstånd, arbetstid."
+        },
+
+        { id: "support_expectations", state: true, label: "D17. Vilka förväntningar har du på organisationen gällande stöd/introduction?", type: "textarea", required: true,
+          maxlength: 350, rows: 4
+        },
+
+        { id: "strategic_challenges", state: true, label: "E18. Vilka är de största utmaningarna de kommande 3-5 åren?", type: "textarea", required: true,
+          maxlength: 400, rows: 4
+        },
+
+        { id: "strategic_opportunities", state: true, label: "E19. Vilka möjligheter bör styrelsen fokusera på?", type: "textarea", required: true,
+          maxlength: 400, rows: 4
+        },
+
+        { id: "strategic_priorities", state: true, label: "E20. Vad vill du prioritera som styrelseledamot under din mandatperiod?", type: "textarea", required: true,
+          maxlength: 400, rows: 4
+        },
+
+        { id: "strategic_success_metrics", state: true, label: "E21. Hur ska styrelsen mäta sin framgång? Vilka indikatorer är viktiga?", type: "textarea", required: true,
+          maxlength: 400, rows: 4
+        },
+
+        { id: "datum", state: true, label: "Datum (YYYY-MM-DD)", type: "date", required: true, defaultValue: "$now" },
+        { id: "underskrift", state: false, label: "Namn (underskrift)", type: "signature", required: true,
+          help: "Signera i rutan nedan. Använd 'Rensa signatur' om du behöver börja om."
+        }
+      ],
+      chapters: [
+        {
+          id: "background",
+          label: "Bakgrund",
+          description: "Grundläggande uppgifter för kontakt och boende.",
+          fieldIds: ["name", "lgh", "email", "phone", "living"]
+        },
+        {
+          id: "experience",
+          label: "Kompetens & Erfarenheter",
+          description: "Tidigare & nuvarande uppdrag, kompetenser, intressen och tillgänglig tid.",
+          fieldIds: ["experiences_table", "competences", "interests", "tid"]
+        },
+        {
+          id: "opinions",
+          label: "A. Styrelsens sammansättning & grundläggande strukturer",
+          description: "Bedömning av styrelsens storlek, mandatperioder och arbetsinsats.",
+          fieldIds: ["konst_how_many", "konst_how_many_other", "konst_term_length", "konst_reelection", "konst_meeting_frequency", "konst_workload"]
+        },
+        {
+          id: "roles",
+          label: "B. Roll, ansvar och förväntningar",
+          description: "Styrelsens uppgifter, prioriterade ansvarsområden och kompetenskrav.",
+          fieldIds: ["role_key_tasks", "importance_finance", "importance_legal", "importance_industry", "importance_tech", "importance_board", "importance_optimize", "role_committee_expectations", "role_integrity_expectations"]
+        },
+        {
+          id: "culture",
+          label: "C. Kultur, dynamik och samverkan",
+          description: "Hur styrelsen bör samarbeta och hantera dynamik.",
+          fieldIds: ["culture_diversity_importance", "culture_valued_traits", "culture_network_expectation", "culture_conflict_handling"]
+        },
+        {
+          id: "engagement",
+          label: "D. Egen roll och engagemang",
+          description: "Dina motiv, förutsättningar och önskemål kring uppdraget.",
+          fieldIds: ["motivation", "participation_limitations", "support_expectations"]
+        },
+        {
+          id: "strategy",
+          label: "E. Framtid & strategisk riktning",
+          description: "Syn på föreningens framtida utmaningar, möjligheter och mätetal.",
+          fieldIds: ["strategic_challenges", "strategic_opportunities", "strategic_priorities", "strategic_success_metrics"]
+        },
+        {
+          id: "commitment",
+          label: "Övrigt & Bekräftelse",
+          description: "Eventuella övriga kommentarer samt formell underskrift.",
+          fieldIds: ["ovrigt", "datum", "underskrift"]
+        }
+      ]
+    };
+
+    const fieldLookup = {};
+    formConfig.fields.forEach(field => {
+      fieldLookup[field.id] = field;
+    });
+
+    /* =========================================================
+       RENDERING + VALIDERING
+       ========================================================= */
+    const formEl = document.getElementById("brfForm");
+    const fieldsEl = document.getElementById("formFields");
+    const errorBox = document.getElementById("errorBox");
+    const okBox = document.getElementById("okBox");
+    const multiRowState = {};
+    const signaturePads = {};
+
+    function pad2(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    function formatTemporalInputValue(type, date) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return "";
+      }
+      const year = date.getFullYear();
+      const month = pad2(date.getMonth() + 1);
+      const day = pad2(date.getDate());
+      const hours = pad2(date.getHours());
+      const minutes = pad2(date.getMinutes());
+
+      switch (type) {
+        case "datetime-local":
+          return `${year}-${month}-${day}T${hours}:${minutes}`;
+        case "time":
+          return `${hours}:${minutes}`;
+        case "date":
+        default:
+          return `${year}-${month}-${day}`;
+      }
+    }
+
+    function resolveTemporalDefaultValue(rawValue, inputType) {
+      if (rawValue === undefined || rawValue === null) {
+        return "";
+      }
+      if (typeof rawValue === "string") {
+        const trimmed = rawValue.trim();
+        if (!trimmed) {
+          return "";
+        }
+        if (trimmed === "$now") {
+          return formatTemporalInputValue(inputType || "date", new Date());
+        }
+        return trimmed;
+      }
+      if (rawValue instanceof Date) {
+        return formatTemporalInputValue(inputType || "date", rawValue);
+      }
+      return `${rawValue}`;
+    }
+
+    function applyDefaultValueToInput(inputEl, config) {
+      if (!inputEl || !config || config.defaultValue === undefined) {
+        return;
+      }
+      const inputType = (inputEl.type || config.type || "text").toLowerCase();
+      let resolved = config.defaultValue;
+      if (inputType === "date" || inputType === "datetime-local" || inputType === "time") {
+        resolved = resolveTemporalDefaultValue(config.defaultValue, inputType);
+      }
+      if (resolved === undefined || resolved === null) {
+        return;
+      }
+      const str = typeof resolved === "string" ? resolved : `${resolved}`;
+      if (!str) {
+        return;
+      }
+      inputEl.value = str;
+      inputEl.defaultValue = str;
+    }
+
+    function teardownSignaturePads() {
+      Object.values(signaturePads).forEach(state => {
+        if (state && typeof state.resizeHandler === "function") {
+          window.removeEventListener("resize", state.resizeHandler);
+        }
+        if (state && state.resizeObserver && typeof state.resizeObserver.disconnect === "function") {
+          state.resizeObserver.disconnect();
+        }
+      });
+      Object.keys(signaturePads).forEach(key => delete signaturePads[key]);
+    }
+
+    function handleMaybePromise(result, onSuccess, onError) {
+      if (result && typeof result.then === "function") {
+        result.then(() => {
+          if (typeof onSuccess === "function") onSuccess();
+        }).catch(err => {
+          if (typeof onError === "function") onError(err);
+        });
+      } else if (typeof onSuccess === "function") {
+        onSuccess();
+      }
+    }
+
+    function resizeSignatureCanvas(state) {
+      if (!state || !state.canvas || !state.pad) return;
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const rect = state.canvas.getBoundingClientRect();
+      const width = Math.max(rect.width, 1);
+      const height = Math.max(rect.height, 1);
+      const existingData = state.pad.toData();
+
+      state.canvas.width = width * ratio;
+      state.canvas.height = height * ratio;
+      const context = state.canvas.getContext("2d");
+      if (context) {
+        context.scale(ratio, ratio);
+      }
+
+      state.pad.clear();
+      if (existingData && existingData.length) {
+        handleMaybePromise(
+          state.pad.fromData(existingData),
+          () => state.updateValue(false),
+          () => state.updateValue(false)
+        );
+      } else {
+        state.updateValue(false);
+      }
+    }
+
+    formEl.addEventListener("invalid", event => {
+      event.preventDefault();
+    }, true);
+
+    function clearFieldError(fieldId) {
+      if (!fieldId) return;
+      const wrap = document.querySelector(`[data-field-wrap="${fieldId}"]`);
+      if (!wrap) return;
+      wrap.classList.remove("field-error");
+      const note = wrap.querySelector(`[data-error-note="${fieldId}"]`);
+      if (note) {
+        note.textContent = "";
+        note.classList.add("hidden");
+      }
+    }
+
+    function clearFieldErrors() {
+      document.querySelectorAll("[data-field-wrap]").forEach(wrap => {
+        wrap.classList.remove("field-error");
+        const fieldId = wrap.dataset.fieldWrap;
+        if (!fieldId) return;
+        const note = wrap.querySelector(`[data-error-note="${fieldId}"]`);
+        if (note) {
+          note.textContent = "";
+          note.classList.add("hidden");
+        }
+      });
+    }
+
+    function setFieldError(fieldId, message, focusEl, shouldFocus) {
+      if (!fieldId) return;
+      const wrap = document.querySelector(`[data-field-wrap="${fieldId}"]`);
+      if (!wrap) return;
+      wrap.classList.add("field-error");
+      const note = wrap.querySelector(`[data-error-note="${fieldId}"]`);
+      if (note) {
+        note.textContent = message;
+        note.classList.remove("hidden");
+      }
+      const focusTarget = focusEl || wrap.querySelector("input, textarea, select, button");
+      if (shouldFocus && focusTarget && typeof focusTarget.focus === "function") {
+        focusTarget.focus({ preventScroll: false });
+      }
+    }
+
+    function getFieldIdFromElement(element) {
+      if (!element) return null;
+      const directId = element.id || element.name || "";
+      if (directId && fieldLookup[directId]) return directId;
+      if (directId && directId.includes("__")) {
+        const baseId = directId.split("__")[0];
+        if (fieldLookup[baseId]) return baseId;
+      }
+      const wrap = element.closest("[data-field-wrap]");
+      if (wrap) return wrap.dataset.fieldWrap || null;
+      return null;
+    }
+
+    function buildElementErrorMessage(field, element) {
+      if (!element) return "Kontrollera detta fält.";
+      const validity = element.validity || {};
+      if (validity.valueMissing) return "Fyll i detta obligatoriska fält.";
+      if (validity.typeMismatch) {
+        if (element.type === "email") return "Ange en giltig e-postadress.";
+        if (element.type === "url") return "Ange en giltig webbadress.";
+        if (element.type === "tel") return "Ange ett giltigt telefonnummer.";
+        return "Värdet har fel format.";
+      }
+      if (validity.patternMismatch) return "Värdet följer inte det förväntade formatet.";
+      if (validity.tooLong && element.maxLength > -1) return `Max ${element.maxLength} tecken är tillåtet.`;
+      if (validity.rangeOverflow && element.max !== "") return `Värdet får högst vara ${element.max}.`;
+      if (validity.rangeUnderflow && element.min !== "") return `Värdet måste vara minst ${element.min}.`;
+      if (validity.stepMismatch) return "Ange ett godkänt värde.";
+      return "Kontrollera detta fält.";
+    }
+
+    function normalizeStateValueForInput(inputEl, value) {
+      if (!inputEl) return value || "";
+      if (value === undefined || value === null) return "";
+      const strValue = typeof value === "string" ? value : `${value}`;
+      if (inputEl.type === "date") {
+        const dateOnly = strValue.split("T")[0];
+        return dateOnly;
+      }
+      return strValue;
+    }
+
+    function validateMultiRowFieldContent(field) {
+      const state = multiRowState[field.id];
+      const rowsWrap = state ? state.rowsWrap : document.getElementById(`${field.id}__rows`);
+      const rows = rowsWrap ? [...rowsWrap.querySelectorAll("[data-row-index]")] : [];
+      const minRows = field.minRows !== undefined ? Math.max(field.minRows, 0) : (field.required ? 1 : 0);
+      const maxRows = field.maxRows || Infinity;
+      const focusElFallback = rowsWrap ? rowsWrap.querySelector("input, textarea, select, button") : null;
+
+      if (minRows > 0 && rows.length < minRows) {
+        const rowLabel = minRows === 1 ? "rad" : "rader";
+        const noteMessage = `Lägg till minst ${minRows} ${rowLabel}.`;
+        return {
+          ok: false,
+          noteMessage,
+          globalMessage: `${field.label}: ${noteMessage}`,
+          focusEl: focusElFallback
+        };
+      }
+      if (rows.length > maxRows) {
+        const noteMessage = `Max ${maxRows} rader tillåtna.`;
+        return {
+          ok: false,
+          noteMessage,
+          globalMessage: `${field.label}: ${noteMessage}`,
+          focusEl: focusElFallback
+        };
+      }
+
+      for (let i = 0; i < rows.length; i++) {
+        const rowEl = rows[i];
+        const rowIndex = rowEl.dataset.rowIndex;
+        const missingColumns = [];
+        const tooLongColumns = [];
+        let firstProblemInput = null;
+
+        for (const col of (field.columns || [])) {
+          const inputName = `${field.id}__${rowIndex}__${col.id}`;
+          const input = rowEl.querySelector(`[name="${inputName}"]`);
+          if (!input) continue;
+          const val = input.value || "";
+          const trimmed = typeof val === "string" ? val.trim() : val;
+
+          if (col.required !== false && (!trimmed || trimmed.length === 0)) {
+            missingColumns.push(col.label);
+            if (!firstProblemInput) firstProblemInput = input;
+          } else if (col.maxlength && typeof trimmed === "string" && trimmed.length > col.maxlength) {
+            tooLongColumns.push(col.label);
+            if (!firstProblemInput) firstProblemInput = input;
+          }
+        }
+
+        if (missingColumns.length || tooLongColumns.length) {
+          const issues = [];
+          if (missingColumns.length) {
+            issues.push(`saknar ${missingColumns.join(", ")}`);
+          }
+          if (tooLongColumns.length) {
+            issues.push(`överskrider maxlängd för ${tooLongColumns.join(", ")}`);
+          }
+          const noteMessage = `Rad ${i + 1} ${issues.join(" och ")}.`;
+          return {
+            ok: false,
+            noteMessage,
+            globalMessage: `${field.label}: ${noteMessage}`,
+            focusEl: firstProblemInput || focusElFallback
+          };
+        }
+      }
+
+      return { ok: true };
+    }
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.remove("hidden");
+      okBox.classList.add("hidden");
+    }
+    function showOK(msg) {
+      okBox.textContent = msg;
+      okBox.classList.remove("hidden");
+      errorBox.classList.add("hidden");
+    }
+    function clearMessages() {
+      errorBox.classList.add("hidden");
+      okBox.classList.add("hidden");
+    }
+
+    function createCharCounter(forId, max) {
+      const div = document.createElement("div");
+      div.className = "count text-xs text-gray-500 mt-1";
+      div.id = `${forId}__counter`;
+      div.textContent = `0 / ${max} tecken`;
+      return div;
+    }
+
+    function updateCounter(id, max) {
+      const input = document.getElementById(id);
+      const counter = document.getElementById(`${id}__counter`);
+      if (!input || !counter) return;
+      const len = (input.value || "").length;
+      counter.textContent = `${len} / ${max} tecken`;
+      counter.classList.toggle("text-red-600", len >= max);
+    }
+
+    function enforceMaxChecked(groupName, max) {
+      if (!Number.isFinite(max)) return;
+      const boxes = [...document.querySelectorAll(`input[name="${groupName}"]`)];
+      const checked = boxes.filter(b => b.checked);
+      if (checked.length > max) {
+        // Uncheck the one just checked
+        const last = checked[checked.length - 1];
+        last.checked = false;
+      }
+    }
+
+    function syncKonstHowManyOtherField() {
+      const select = document.getElementById("konst_how_many");
+      const otherInput = document.getElementById("konst_how_many_other");
+      if (!select || !otherInput) return;
+      const enable = select.value === "other";
+      otherInput.disabled = !enable;
+      if (!enable) {
+        otherInput.value = "";
+      }
+    }
+
+    function setupConditionalFieldToggles() {
+      const select = document.getElementById("konst_how_many");
+      if (select) {
+        select.addEventListener("change", () => {
+          syncKonstHowManyOtherField();
+          clearFieldError("konst_how_many_other");
+        });
+      }
+      syncKonstHowManyOtherField();
+    }
+
+    // Rendera fält
+    function renderFields() {
+      teardownSignaturePads();
+      fieldsEl.innerHTML = "";
+      Object.keys(multiRowState).forEach(key => delete multiRowState[key]);
+
+      const renderSingleField = (field, container) => {
+        const wrap = document.createElement("div");
+        wrap.dataset.fieldWrap = field.id;
+
+        // Label
+        const label = document.createElement("label");
+        label.className = "block text-sm font-medium mb-2";
+        if (field.type !== "multi-row" && field.type !== "checkbox-group") {
+          label.setAttribute("for", field.id);
+        }
+        const labelIsRequired = field.type === "checkbox-group"
+          ? (typeof field.minChecked === "number" ? field.minChecked > 0 : !!field.required)
+          : !!field.required;
+        label.innerHTML = `${field.label}${labelIsRequired ? ' <span class="text-red-600">*</span>' : ""}`;
+        wrap.appendChild(label);
+
+        let inputEl = null;
+        let counterEl = null;
+
+        if (field.type === "textarea") {
+          inputEl = document.createElement("textarea");
+          inputEl.id = field.id;
+          inputEl.name = field.id;
+          inputEl.rows = field.rows || 4;
+          inputEl.className = "w-full rounded-xl border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
+          if (field.required) inputEl.required = true;
+          if (field.maxlength) inputEl.maxLength = field.maxlength;
+          applyDefaultValueToInput(inputEl, field);
+          wrap.appendChild(inputEl);
+          inputEl.addEventListener("input", () => clearFieldError(field.id));
+          if (field.maxlength) {
+            counterEl = createCharCounter(field.id, field.maxlength);
+            wrap.appendChild(counterEl);
+            inputEl.addEventListener("input", () => updateCounter(field.id, field.maxlength));
+          }
+
+        } else if (field.type === "select") {
+          inputEl = document.createElement("select");
+          inputEl.id = field.id;
+          inputEl.name = field.id;
+          inputEl.className = "w-full rounded-xl border border-gray-300 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500";
+          if (field.required) inputEl.required = true;
+          const placeholder = document.createElement("option");
+          placeholder.value = "";
+          placeholder.textContent = "Välj...";
+          placeholder.disabled = true;
+          placeholder.selected = true;
+          inputEl.appendChild(placeholder);
+          (field.options || []).forEach(opt => {
+            const o = document.createElement("option");
+            o.value = opt.value;
+            o.textContent = opt.text;
+            inputEl.appendChild(o);
+          });
+          wrap.appendChild(inputEl);
+          inputEl.addEventListener("change", () => clearFieldError(field.id));
+          inputEl.addEventListener("input", () => clearFieldError(field.id));
+
+        } else if (field.type === "multi-row") {
+          const columns = field.columns || [];
+          const minRows = field.minRows !== undefined ? Math.max(field.minRows, 0) : (field.required ? 1 : 0);
+          const maxRows = field.maxRows || Infinity;
+          const state = { nextIndex: 0 };
+
+          const rowsWrap = document.createElement("div");
+          rowsWrap.id = `${field.id}__rows`;
+          rowsWrap.className = "space-y-3";
+          wrap.appendChild(rowsWrap);
+
+          const controlsWrap = document.createElement("div");
+          controlsWrap.className = "flex justify-end mt-2";
+          const addRowBtn = document.createElement("button");
+          addRowBtn.type = "button";
+          addRowBtn.className = "inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500";
+          addRowBtn.textContent = field.addButtonLabel || "Lägg till rad";
+          controlsWrap.appendChild(addRowBtn);
+          wrap.appendChild(controlsWrap);
+
+          const updateRowControls = () => {
+            const rowCount = rowsWrap.childElementCount;
+            addRowBtn.disabled = rowCount >= maxRows;
+            addRowBtn.classList.toggle("opacity-50", addRowBtn.disabled);
+            rowsWrap.querySelectorAll("button[data-remove-row]").forEach(btn => {
+              const disable = rowCount <= minRows;
+              btn.disabled = disable;
+              btn.classList.toggle("opacity-50", disable);
+            });
+          };
+
+          const addRow = () => {
+            if (rowsWrap.childElementCount >= maxRows) return;
+            const rowIndex = state.nextIndex++;
+            const row = document.createElement("div");
+            row.dataset.rowIndex = rowIndex;
+            row.className = "rounded-lg border border-gray-200 bg-slate-50 p-4 space-y-3 md:space-y-0 md:flex md:flex-wrap md:gap-3";
+
+            columns.forEach(col => {
+              const colWrap = document.createElement("div");
+              colWrap.className = "flex flex-col flex-1 min-w-[180px]";
+              const subLabel = document.createElement("label");
+              const inputId = `${field.id}__${rowIndex}__${col.id}`;
+              subLabel.className = "text-xs font-semibold text-gray-700 uppercase tracking-wide";
+              subLabel.setAttribute("for", inputId);
+              subLabel.textContent = col.label;
+              colWrap.appendChild(subLabel);
+
+              let input;
+              if (col.type === "textarea") {
+                input = document.createElement("textarea");
+                input.rows = col.rows || 2;
+              } else {
+                input = document.createElement("input");
+                input.type = col.type || "text";
+              }
+              input.id = inputId;
+              input.name = `${field.id}__${rowIndex}__${col.id}`;
+              input.className = "rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
+              if (col.placeholder) input.placeholder = col.placeholder;
+              if (col.maxlength) input.maxLength = col.maxlength;
+              if (col.required !== false) {
+                input.required = true;
+                input.dataset.columnRequired = "true";
+                input.setAttribute("aria-required", "true");
+              }
+              colWrap.appendChild(input);
+              applyDefaultValueToInput(input, col);
+
+              input.addEventListener("input", () => clearFieldError(field.id));
+              input.addEventListener("change", () => clearFieldError(field.id));
+
+              if (col.maxlength) {
+                const cc = createCharCounter(inputId, col.maxlength);
+                colWrap.appendChild(cc);
+                updateCounter(inputId, col.maxlength);
+                input.addEventListener("input", () => updateCounter(inputId, col.maxlength));
+              }
+
+              row.appendChild(colWrap);
+            });
+
+            const removeWrap = document.createElement("div");
+            removeWrap.className = "flex items-end";
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.dataset.removeRow = "true";
+            removeBtn.className = "text-sm text-red-600 px-3 py-2 border border-red-200 rounded-lg hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300";
+            removeBtn.textContent = "Ta bort rad";
+            removeBtn.addEventListener("click", () => {
+              if (rowsWrap.childElementCount > minRows) {
+                row.remove();
+                updateRowControls();
+                clearFieldError(field.id);
+              }
+            });
+            removeWrap.appendChild(removeBtn);
+            row.appendChild(removeWrap);
+
+            rowsWrap.appendChild(row);
+            updateRowControls();
+            clearFieldError(field.id);
+          };
+
+          const ensureMinRows = () => {
+            const target = Math.max(minRows, 1);
+            while (rowsWrap.childElementCount < target) {
+              addRow();
+            }
+          };
+
+          addRowBtn.addEventListener("click", () => addRow());
+
+          multiRowState[field.id] = {
+            addRow,
+            ensureMinRows,
+            reset: () => {
+              rowsWrap.innerHTML = "";
+              state.nextIndex = 0;
+              ensureMinRows();
+            },
+            rowsWrap,
+            columns,
+            updateRowControls,
+            getRowCount: () => rowsWrap.childElementCount,
+          };
+
+          ensureMinRows();
+
+        } else if (field.type === "checkbox-group") {
+          // Checkboxar (max 2) + varför per val
+          const group = document.createElement("div");
+          group.className = "space-y-2";
+          (field.options || []).forEach(opt => {
+            const row = document.createElement("div");
+            row.className = "flex items-start gap-2";
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.id = `${field.id}__${opt.value}`;
+            cb.name = field.id; // samma name för alla i gruppen
+            cb.value = opt.value;
+            cb.className = "mt-1";
+            row.appendChild(cb);
+
+            const lab = document.createElement("label");
+            lab.setAttribute("for", cb.id);
+            lab.className = "text-sm";
+            lab.textContent = opt.text;
+            row.appendChild(lab);
+
+            group.appendChild(row);
+
+            // "Varför" textarea per checkbox
+            const why = document.createElement("textarea");
+            why.id = `${cb.id}__why`;
+            why.name = `${cb.id}__why`;
+            why.rows = 2;
+            why.placeholder = "Varför? (kort, faktaorienterat)";
+            why.className = "w-full rounded-xl border border-gray-200 px-3 py-2 ml-6 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500";
+            why.disabled = true;
+            if (field.whyMaxlength) why.maxLength = field.whyMaxlength;
+            group.appendChild(why);
+            why.addEventListener("input", () => clearFieldError(field.id));
+
+            if (field.whyMaxlength) {
+              const cc = createCharCounter(why.id, field.whyMaxlength);
+              cc.classList.add("ml-6");
+              group.appendChild(cc);
+              why.addEventListener("input", () => updateCounter(why.id, field.whyMaxlength));
+            }
+
+            cb.addEventListener("change", () => {
+              enforceMaxChecked(field.id, typeof field.maxChecked === "number" ? field.maxChecked : Infinity);
+              // Enable/disable why field if checked
+              const enabled = cb.checked;
+              why.disabled = !enabled;
+              if (!enabled) { why.value = ""; updateCounter(why.id, field.whyMaxlength || 0); }
+              clearFieldError(field.id);
+            });
+          });
+
+          // "Annat" fritext om efterfrågat
+        if (field.includeOtherText && field.otherTextId) {
+          const otherWrap = document.createElement("div");
+          otherWrap.className = "mt-2";
+          const otherLbl = document.createElement("label");
+          otherLbl.className = "block text-sm text-gray-700 mb-1";
+          otherLbl.setAttribute("for", field.otherTextId);
+          otherLbl.textContent = "Om 'Annat' valts - ange område (kort):";
+          otherWrap.appendChild(otherLbl);
+
+          const other = document.createElement("input");
+          other.type = "text";
+          other.id = field.otherTextId;
+          other.name = field.otherTextId;
+          other.className = "w-full rounded-xl border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
+          if (field.otherTextMaxlength) other.maxLength = field.otherTextMaxlength;
+          other.placeholder = "T.ex. 'Upphandling', 'Kommunal kontakt' ...";
+          other.disabled = true;
+          otherWrap.appendChild(other);
+          other.addEventListener("input", () => clearFieldError(field.id));
+
+          if (field.otherTextMaxlength) {
+            const oc = createCharCounter(other.id, field.otherTextMaxlength);
+            otherWrap.appendChild(oc);
+            other.addEventListener("input", () => updateCounter(other.id, field.otherTextMaxlength));
+          }
+
+          // Styr 'Annat'-fältet baserat på om 'annat' är ikryssat
+          const syncOtherState = () => {
+            const annatBox = document.getElementById(`${field.id}__annat`);
+            const enabled = annatBox && annatBox.checked;
+            other.disabled = !enabled;
+            if (!enabled) { other.value = ""; updateCounter(other.id, field.otherTextMaxlength || 0); }
+            clearFieldError(field.id);
+          };
+          // Hitta "annat" checkbox och koppla
+          setTimeout(() => {
+            const annatBox = document.getElementById(`${field.id}__annat`);
+            if (annatBox) {
+              annatBox.addEventListener("change", syncOtherState);
+              syncOtherState();
+            }
+          }, 0);
+
+          group.appendChild(otherWrap);
+        }
+
+        wrap.appendChild(group);
+
+        } else if (field.type === "signature") {
+          const signatureContainer = document.createElement("div");
+          signatureContainer.className = "space-y-3";
+
+          const canvasWrapper = document.createElement("div");
+          canvasWrapper.className = "border border-gray-300 bg-white rounded-xl overflow-hidden";
+          const canvas = document.createElement("canvas");
+          canvas.id = `${field.id}__canvas`;
+          canvas.className = "w-full block";
+          canvas.style.width = "100%";
+          canvas.style.height = field.canvasHeight || "160px";
+          canvas.style.touchAction = "none";
+          canvas.tabIndex = 0;
+          canvas.setAttribute("role", "img");
+          canvas.setAttribute("aria-label", "Signaturplatta");
+          canvasWrapper.appendChild(canvas);
+          signatureContainer.appendChild(canvasWrapper);
+
+          const actions = document.createElement("div");
+          actions.className = "flex justify-end gap-2";
+          const clearBtn = document.createElement("button");
+          clearBtn.type = "button";
+          clearBtn.className = "inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500";
+          clearBtn.textContent = field.clearButtonLabel || "Rensa signatur";
+          actions.appendChild(clearBtn);
+          signatureContainer.appendChild(actions);
+
+          const hiddenInput = document.createElement("input");
+          hiddenInput.type = "hidden";
+          hiddenInput.id = field.id;
+          hiddenInput.name = field.id;
+          if (field.required !== false) {
+            hiddenInput.setCustomValidity("Signaturen krävs.");
+          }
+          signatureContainer.appendChild(hiddenInput);
+
+          wrap.appendChild(signatureContainer);
+
+          const state = {
+            field,
+            canvas,
+            hiddenInput,
+            pad: null,
+            updateValue: () => {},
+            clear: () => {},
+            loadDataUrl: () => {},
+            resizeHandler: null,
+            resizeObserver: null
+          };
+          signaturePads[field.id] = state;
+
+          if (typeof window.SignaturePad !== "function") {
+            clearBtn.disabled = true;
+            clearBtn.classList.add("opacity-60", "cursor-not-allowed");
+            hiddenInput.value = "";
+            wrap.classList.add("field-error");
+            const note = wrap.querySelector(`[data-error-note="${field.id}"]`);
+            if (note) {
+              note.textContent = "Signaturfunktionen kunde inte laddas. Uppdatera sidan.";
+              note.classList.remove("hidden");
+            }
+          } else {
+            const pad = new window.SignaturePad(canvas, {
+              penColor: field.penColor || "#0f172a",
+              backgroundColor: field.backgroundColor || "#ffffff"
+            });
+            state.pad = pad;
+
+            state.updateValue = (shouldClearError = true) => {
+              const empty = pad.isEmpty();
+              const value = empty ? "" : pad.toDataURL("image/png");
+              hiddenInput.value = value;
+              if (field.required !== false) {
+                hiddenInput.setCustomValidity(empty ? "Signaturen krävs." : "");
+              } else {
+                hiddenInput.setCustomValidity("");
+              }
+              if (!empty && shouldClearError) {
+                clearFieldError(field.id);
+              }
+            };
+
+            state.clear = () => {
+              pad.clear();
+              state.updateValue(false);
+            };
+
+            state.loadDataUrl = dataUrl => {
+              if (!pad) return;
+              resizeSignatureCanvas(state);
+              if (!dataUrl) {
+                state.clear();
+                return;
+              }
+              pad.clear();
+              handleMaybePromise(
+                pad.fromDataURL(dataUrl),
+                () => {
+                  state.updateValue(false);
+                  clearFieldError(field.id);
+                },
+                () => state.updateValue(false)
+              );
+            };
+
+            const resizeFn = () => resizeSignatureCanvas(state);
+            state.resizeHandler = resizeFn;
+            window.addEventListener("resize", resizeFn);
+            if (typeof ResizeObserver !== "undefined") {
+              state.resizeObserver = new ResizeObserver(() => resizeFn());
+              state.resizeObserver.observe(canvas.parentElement || canvas);
+            }
+
+            const updateAfterStroke = () => state.updateValue(true);
+
+            if (typeof pad.addEventListener === "function") {
+              pad.addEventListener("beginStroke", () => clearFieldError(field.id));
+              pad.addEventListener("endStroke", updateAfterStroke);
+            } else {
+              pad.onBegin = () => clearFieldError(field.id);
+              pad.onEnd = updateAfterStroke;
+            }
+
+            clearBtn.addEventListener("click", () => {
+              state.clear();
+              clearFieldError(field.id);
+            });
+
+            requestAnimationFrame(() => {
+              resizeSignatureCanvas(state);
+              state.updateValue(false);
+            });
+          }
+
+        } else {
+          // Standard input (text, email, tel, date, etc.)
+          inputEl = document.createElement("input");
+          inputEl.id = field.id;
+          inputEl.name = field.id;
+          inputEl.type = field.type || "text";
+          inputEl.className = "w-full rounded-xl border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
+          if (field.placeholder) inputEl.placeholder = field.placeholder;
+          if (field.required) inputEl.required = true;
+          if (field.maxlength) inputEl.maxLength = field.maxlength;
+          if (field.min !== undefined) inputEl.min = field.min;
+          if (field.max !== undefined) inputEl.max = field.max;
+          if (field.step !== undefined) inputEl.step = field.step;
+          if (field.pattern) inputEl.pattern = field.pattern;
+          if (field.inputMode) inputEl.inputMode = field.inputMode;
+          applyDefaultValueToInput(inputEl, field);
+          wrap.appendChild(inputEl);
+          inputEl.addEventListener("input", () => clearFieldError(field.id));
+          inputEl.addEventListener("change", () => clearFieldError(field.id));
+          if (field.maxlength) {
+            counterEl = createCharCounter(field.id, field.maxlength);
+            wrap.appendChild(counterEl);
+            inputEl.addEventListener("input", () => updateCounter(field.id, field.maxlength));
+          }
+        }
+
+        // Hjälptext
+        if (field.help) {
+          const help = document.createElement("p");
+          help.className = "hint text-gray-500 mt-1";
+          help.textContent = field.help;
+          wrap.appendChild(help);
+        }
+
+        const note = document.createElement("p");
+        note.className = "field-error-note hidden";
+        note.dataset.errorNote = field.id;
+        wrap.appendChild(note);
+
+        container.appendChild(wrap);
+      };
+
+      const assigned = new Set();
+      const chapters = Array.isArray(formConfig.chapters) && formConfig.chapters.length
+        ? formConfig.chapters
+        : [{ id: "default", label: "", description: "", fieldIds: formConfig.fields.map(f => f.id) }];
+
+      let isFirstChapter = true;
+      chapters.forEach(chapter => {
+        const chapterFieldIds = Array.isArray(chapter.fieldIds) && chapter.fieldIds.length
+          ? chapter.fieldIds
+          : formConfig.fields.map(f => f.id);
+
+        if (chapter.label || chapter.description) {
+          const header = document.createElement("div");
+          header.className = "pb-2 border-b border-gray-200";
+          if (!isFirstChapter) header.classList.add("mt-8");
+          const title = document.createElement("h2");
+          title.className = "text-lg font-semibold text-gray-800";
+          title.textContent = chapter.label || "";
+          header.appendChild(title);
+          if (chapter.description) {
+            const desc = document.createElement("p");
+            desc.className = "text-sm text-gray-600 mt-1";
+            desc.textContent = chapter.description;
+            header.appendChild(desc);
+          }
+          fieldsEl.appendChild(header);
+        }
+
+        const section = document.createElement("div");
+        section.className = "space-y-6";
+        if (!isFirstChapter && !(chapter.label || chapter.description)) {
+          section.classList.add("mt-6");
+        }
+        fieldsEl.appendChild(section);
+
+        chapterFieldIds.forEach(fieldId => {
+          const field = fieldLookup[fieldId];
+          if (!field) return;
+          assigned.add(fieldId);
+          renderSingleField(field, section);
+        });
+
+        isFirstChapter = false;
+      });
+
+      const unassigned = formConfig.fields.filter(field => !assigned.has(field.id));
+      if (unassigned.length) {
+        const section = document.createElement("div");
+        section.className = "space-y-6 mt-8";
+        fieldsEl.appendChild(section);
+        unassigned.forEach(field => renderSingleField(field, section));
+      }
+    }
+
+    renderFields();
+    setupConditionalFieldToggles();
+
+    // Init counters on load
+    window.addEventListener("load", () => {
+      formConfig.fields.forEach(f => {
+        if (f.type === "textarea" || f.type === "text" || f.type === "email" || f.type === "tel") {
+          if (f.maxlength) updateCounter(f.id, f.maxlength);
+        }
+        if (f.type === "checkbox-group") {
+          (f.options || []).forEach(opt => {
+            const whyId = `${f.id}__${opt.value}__why`;
+            if (f.whyMaxlength) updateCounter(whyId, f.whyMaxlength);
+          });
+          if (f.includeOtherText && f.otherTextId && f.otherTextMaxlength) {
+            updateCounter(f.otherTextId, f.otherTextMaxlength);
+          }
+        }
+      });
+      loadStateFromQuery();
+    });
+
+    /* =========================================================
+       DATASAMLING + VALIDERING
+       ========================================================= */
+    function validateWhyTextsForChecked(groupId, whyMaxLen) {
+      // Alla ibockade ska ha "Varför" ifyllt (min 1 tecken)
+      const boxes = [...document.querySelectorAll(`input[name="${groupId}"]`)];
+      for (const b of boxes) {
+        if (b.checked) {
+          const why = document.getElementById(`${b.id}__why`);
+          if (!why || !why.value || why.value.trim().length === 0) {
+            return {
+              ok: false,
+              reason: `Ange kort 'Varför?' för valt alternativ.`,
+              fieldId: groupId,
+              elementId: why ? why.id : b.id
+            };
+          }
+          if (whyMaxLen && why.value.length > whyMaxLen) {
+            return {
+              ok: false,
+              reason: `Texten under 'Varför?' är för lång (max ${whyMaxLen} tecken).`,
+              fieldId: groupId,
+              elementId: why.id
+            };
+          }
+        }
+      }
+      return { ok: true };
+    }
+
+    function collectFormData() {
+      const data = {};
+      for (const f of formConfig.fields) {
+        const includeInState = f.state === true;
+        if (f.type === "checkbox-group") {
+          const sel = [...document.querySelectorAll(`input[name="${f.id}"]`)]
+            .filter(b => b.checked)
+            .map(b => b.value);
+          // Why per val
+          const why = {};
+          sel.forEach(val => {
+            const t = document.getElementById(`${f.id}__${val}__why`);
+            why[val] = (t && t.value) ? t.value.trim() : "";
+          });
+          if (includeInState) {
+            data[f.id] = sel;
+            data[`${f.id}_varfor`] = why;
+            if (f.includeOtherText && f.otherTextId) {
+              const other = document.getElementById(f.otherTextId);
+              data[f.otherTextId] = other && !other.disabled ? (other.value || "") : "";
+            }
+          }
+        } else if (f.type === "signature") {
+          const sigState = signaturePads[f.id];
+          if (sigState && typeof sigState.updateValue === "function") {
+            sigState.updateValue(false);
+          }
+          const required = f.required !== false;
+          const isEmpty = !sigState || !sigState.pad || sigState.pad.isEmpty();
+          if (required && isEmpty) {
+            const noteMessage = "Signera i rutan.";
+            const globalMessage = `${f.label}: ${noteMessage}`;
+            const focusEl = sigState ? sigState.canvas : null;
+            markError(f.id, noteMessage, focusEl);
+            showError(globalMessage);
+            return false;
+          }
+          if (includeInState) {
+            const value = sigState && sigState.hiddenInput ? (sigState.hiddenInput.value || "") : "";
+            data[f.id] = value;
+          }
+        } else if (f.type === "multi-row") {
+          const rowsWrap = document.getElementById(`${f.id}__rows`);
+          const rows = [];
+          if (rowsWrap) {
+            rowsWrap.querySelectorAll("[data-row-index]").forEach(rowEl => {
+              const rowIndex = rowEl.dataset.rowIndex;
+              const rowData = {};
+              (f.columns || []).forEach(col => {
+                const inputName = `${f.id}__${rowIndex}__${col.id}`;
+                const input = rowEl.querySelector(`[name="${inputName}"]`);
+                const rawValue = input ? input.value || "" : "";
+                rowData[col.id] = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+              });
+              rows.push(rowData);
+            });
+          }
+          if (includeInState) {
+            data[f.id] = rows;
+          }
+        } else {
+          const input = document.getElementById(f.id);
+          if (includeInState) {
+            data[f.id] = input ? (input.value || "") : "";
+          }
+        }
+      }
+      if (Object.keys(data).length > 0) {
+        data["_submitted_at"] = new Date().toISOString();
+      }
+      return data;
+    }
+
+    function validateForm() {
+      clearMessages();
+      clearFieldErrors();
+
+      let focusAssigned = false;
+      const markError = (fieldId, noteMessage, focusEl) => {
+        const shouldFocus = !focusAssigned;
+        setFieldError(fieldId, noteMessage, focusEl, shouldFocus);
+        if (shouldFocus) {
+          focusAssigned = true;
+        }
+      };
+
+      const firstInvalid = formEl.querySelector(":invalid");
+      if (firstInvalid) {
+        const fieldId = getFieldIdFromElement(firstInvalid);
+        const field = fieldLookup[fieldId];
+        if (field && field.type === "multi-row") {
+          const res = validateMultiRowFieldContent(field);
+          if (!res.ok) {
+            markError(field.id, res.noteMessage, res.focusEl);
+            showError(res.globalMessage);
+            return false;
+          }
+        } else if (field && field.type === "signature") {
+          const sigState = signaturePads[field.id];
+          const noteMessage = "Signera i rutan.";
+          const focusEl = sigState ? sigState.canvas : null;
+          const globalMessage = `${field.label}: ${noteMessage}`;
+          markError(field.id, noteMessage, focusEl);
+          showError(globalMessage);
+          return false;
+        } else {
+          const noteMessage = buildElementErrorMessage(field, firstInvalid);
+          const globalMessage = field ? `${field.label}: ${noteMessage}` : noteMessage;
+          markError(fieldId, noteMessage, firstInvalid);
+          showError(globalMessage);
+          return false;
+        }
+      }
+
+      for (const f of formConfig.fields) {
+        if (f.type === "checkbox-group") {
+          const checkboxes = [...document.querySelectorAll(`input[name="${f.id}"]`)];
+          const checked = checkboxes.filter(b => b.checked).length;
+          const min = typeof f.minChecked === "number" ? Math.max(f.minChecked, 0) : 0;
+          const max = typeof f.maxChecked === "number" ? f.maxChecked : Infinity;
+
+          if (checked < min) {
+            const noteMessage = min === 1 ? "Välj minst ett alternativ." : `Välj minst ${min} alternativ.`;
+            const globalMessage = `${f.label}: ${noteMessage}`;
+            const focusEl = checkboxes[0] || null;
+            markError(f.id, noteMessage, focusEl);
+            showError(globalMessage);
+            return false;
+          }
+
+          const res = validateWhyTextsForChecked(f.id, f.whyMaxlength || 0);
+          if (!res.ok) {
+            const focusEl = res.elementId ? document.getElementById(res.elementId) : document.querySelector(`input[name="${f.id}"]`);
+            const noteMessage = res.reason;
+            const globalMessage = `${f.label}: ${noteMessage}`;
+            markError(res.fieldId || f.id, noteMessage, focusEl);
+            showError(globalMessage);
+            return false;
+          }
+
+          if (Number.isFinite(max) && checked > max) {
+            const noteMessage = `Välj högst ${max} alternativ.`;
+            const globalMessage = `${f.label}: ${noteMessage}`;
+            const focusEl = document.querySelector(`input[name="${f.id}"]`);
+            markError(f.id, noteMessage, focusEl);
+            showError(globalMessage);
+            return false;
+          }
+
+          if (f.includeOtherText) {
+            const annat = document.getElementById(`${f.id}__annat`);
+            const other = document.getElementById(f.otherTextId);
+            if (annat && annat.checked) {
+              const value = other && other.value ? other.value.trim() : "";
+              if (!value) {
+                const noteMessage = "Ange text för 'Annat'.";
+                const globalMessage = `${f.label}: ${noteMessage}`;
+                markError(f.id, noteMessage, other);
+                showError(globalMessage);
+                return false;
+              }
+            }
+          }
+        } else if (f.type === "multi-row") {
+          const res = validateMultiRowFieldContent(f);
+          if (!res.ok) {
+            markError(f.id, res.noteMessage, res.focusEl);
+            showError(res.globalMessage);
+            return false;
+          }
+        } else {
+          const input = document.getElementById(f.id);
+          if (input && !input.checkValidity()) {
+            const noteMessage = buildElementErrorMessage(f, input);
+            const globalMessage = `${f.label}: ${noteMessage}`;
+            markError(f.id, noteMessage, input);
+            showError(globalMessage);
+            return false;
+          }
+        }
+      }
+
+      const howManySelect = document.getElementById("konst_how_many");
+      if (howManySelect && howManySelect.value === "other") {
+        const otherInput = document.getElementById("konst_how_many_other");
+        const rawValue = otherInput ? (otherInput.value || "").trim() : "";
+        const numeric = Number(rawValue);
+        if (!rawValue) {
+          const noteMessage = "Ange antal om du valt 'Annat'.";
+          const focusEl = otherInput || howManySelect;
+          markError("konst_how_many_other", noteMessage, focusEl);
+          const label = (fieldLookup.konst_how_many && fieldLookup.konst_how_many.label) || "A1";
+          showError(`${label}: ${noteMessage}`);
+          return false;
+        }
+        if (!Number.isFinite(numeric) || numeric < 1) {
+          const noteMessage = "Ange ett giltigt positivt heltal.";
+          const focusEl = otherInput || howManySelect;
+          markError("konst_how_many_other", noteMessage, focusEl);
+          const label = (fieldLookup.konst_how_many && fieldLookup.konst_how_many.label) || "A1";
+          showError(`${label}: ${noteMessage}`);
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    /* =========================================================
+       DELNING & URL-STATE
+       ========================================================= */
+    function encodeState(data) {
+      const json = JSON.stringify(data);
+      if (typeof TextEncoder !== "undefined") {
+        const bytes = new TextEncoder().encode(json);
+        let binary = "";
+        for (const byte of bytes) {
+          binary += String.fromCharCode(byte);
+        }
+        return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      }
+      const binary = unescape(encodeURIComponent(json));
+      return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+
+    function decodeState(encoded) {
+      let base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+      while (base64.length % 4 !== 0) {
+        base64 += "=";
+      }
+      const binary = atob(base64);
+      if (typeof TextDecoder !== "undefined") {
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const json = new TextDecoder().decode(bytes);
+        return JSON.parse(json);
+      }
+      const json = decodeURIComponent(escape(binary));
+      return JSON.parse(json);
+    }
+
+    function buildShareUrl(data) {
+      const encoded = encodeState(data);
+      const url = new URL(window.location.href);
+      url.searchParams.set("state", encoded);
+      return url.toString();
+    }
+
+    async function shareState(data) {
+      const shareUrl = buildShareUrl(data);
+      const sharePayload = {
+        title: document.title,
+        text: "BRF - Kandidatpresentation (delningslänk)",
+        url: shareUrl,
+      };
+
+      if (navigator.share) {
+        try {
+          const canShare = typeof navigator.canShare === "function"
+            ? navigator.canShare({ url: shareUrl })
+            : true;
+          if (canShare) {
+            await navigator.share(sharePayload);
+            showOK("Delningsdialog öppnades. Kontrollera att länken skickades.");
+            return;
+          }
+        } catch (err) {
+          if (err && err.name === "AbortError") {
+            showError("Delningen avbröts.");
+            return;
+          }
+          console.warn("Native share misslyckades, försöker kopiera.", err);
+        }
+      }
+
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          await navigator.clipboard.writeText(shareUrl);
+          showOK("Delningslänken kopierades till urklipp.");
+          return;
+        }
+      } catch (err) {
+        console.warn("Clipboard API misslyckades, försöker fallback.", err);
+      }
+
+      const tempInput = document.createElement("input");
+      tempInput.type = "text";
+      tempInput.value = shareUrl;
+      tempInput.setAttribute("aria-hidden", "true");
+      tempInput.style.position = "fixed";
+      tempInput.style.opacity = "0";
+      document.body.appendChild(tempInput);
+      tempInput.focus();
+      tempInput.select();
+      const success = document.execCommand("copy");
+      document.body.removeChild(tempInput);
+      if (!success) {
+        throw new Error("Kunde inte kopiera delningslänk.");
+      }
+      showOK("Delningslänken kopierades. Klistra in den i ett meddelande.");
+    }
+
+    /* =========================================================
+       EXCEL-EXPORT
+       ========================================================= */
+    function ensureUniqueSheetName(label, usedNames) {
+      const fallbackBase = `Blad ${usedNames.size + 1}`;
+      const rawLabel = typeof label === "string" ? label : `${label || ""}`;
+      let base = rawLabel.replace(/[\[\]:\/\\\?\*]/g, " ").replace(/\s+/g, " ").trim();
+      if (!base) base = fallbackBase;
+      base = base.slice(0, 31).trim();
+      if (!base) base = fallbackBase.slice(0, 31).trim();
+      if (!base) base = "Blad";
+      let name = base;
+      let counter = 2;
+      while (usedNames.has(name)) {
+        const suffix = ` ${counter}`;
+        const sliceLength = Math.max(31 - suffix.length, 1);
+        let candidate = base.slice(0, sliceLength).trim();
+        if (!candidate) {
+          candidate = base.slice(0, sliceLength);
+        }
+        if (!candidate) {
+          candidate = fallbackBase.slice(0, sliceLength).trim() || "Blad";
+        }
+        name = `${candidate}${suffix}`.trim();
+        counter += 1;
+      }
+      usedNames.add(name);
+      return name;
+    }
+
+    function resolveOptionText(field, value) {
+      if (value === undefined || value === null) return "";
+      const strValue = typeof value === "string" ? value : `${value}`;
+      if (field && Array.isArray(field.options)) {
+        const match = field.options.find(opt => `${opt.value}` === strValue);
+        if (match && match.text) {
+          return match.text;
+        }
+      }
+      return strValue;
+    }
+
+    function formatCheckboxGroupValue(field, data) {
+      const selected = Array.isArray(data[field.id]) ? data[field.id] : [];
+      const whyMap = data[`${field.id}_varfor`] || {};
+      const lines = selected.map(value => {
+        const label = resolveOptionText(field, value);
+        const reason = typeof whyMap[value] === "string" ? whyMap[value].trim() : "";
+        return reason ? `${label} – Varför: ${reason}` : label;
+      });
+
+      if (field && field.includeOtherText && field.otherTextId) {
+        const otherRaw = data[field.otherTextId];
+        if (otherRaw !== undefined && otherRaw !== null) {
+          const otherStr = typeof otherRaw === "string" ? otherRaw.trim() : `${otherRaw}`;
+          if (otherStr) {
+            lines.push(`Annat: ${otherStr}`);
+          }
+        }
+      }
+
+      return lines.join("\n");
+    }
+
+    function formatFieldValueForExport(field, data) {
+      if (!field) return "";
+      if (field.type === "checkbox-group") {
+        return formatCheckboxGroupValue(field, data);
+      }
+      if (field.type === "select") {
+        return resolveOptionText(field, data[field.id]);
+      }
+      const raw = data[field.id];
+      if (raw === undefined || raw === null) return "";
+      if (typeof raw === "string") return raw;
+      return `${raw}`;
+    }
+
+    function autoFitColumnsFromRows(rows) {
+      if (!Array.isArray(rows) || rows.length === 0) return [];
+      const columnCount = Math.max(...rows.map(row => Array.isArray(row) ? row.length : 0));
+      const widths = new Array(columnCount).fill(0);
+
+      rows.forEach(row => {
+        const cells = Array.isArray(row) ? row : [];
+        for (let i = 0; i < columnCount; i++) {
+          const cell = cells[i];
+          const str = cell === undefined || cell === null ? "" : `${cell}`;
+          const longestLine = str.split(/\r?\n/).reduce((max, line) => Math.max(max, line.length), 0);
+          widths[i] = Math.max(widths[i], longestLine);
+        }
+      });
+
+      return widths.map(len => ({ wch: Math.max(12, Math.min(len + 2, 60)) }));
+    }
+
+    function formatIsoToLocal(isoString) {
+      if (!isoString) return "";
+      const date = new Date(isoString);
+      if (Number.isNaN(date.getTime())) {
+        return `${isoString}`;
+      }
+      return date.toLocaleString("sv-SE");
+    }
+
+    function buildExcelWorkbook(data) {
+      if (typeof XLSX !== "object" || !XLSX || !XLSX.utils || typeof XLSX.utils.book_new !== "function") {
+        throw new Error("XLSX-biblioteket är inte tillgängligt.");
+      }
+
+      const workbook = XLSX.utils.book_new();
+      const usedSheetNames = new Set();
+      const overviewName = ensureUniqueSheetName("Svar", usedSheetNames);
+      const overviewRows = [["Fält-ID", "Fråga", "Svar"]];
+      const pendingSheets = [];
+
+      formConfig.fields.forEach(field => {
+        const label = field.label || field.id;
+        if (field.type === "multi-row") {
+          const rowsData = Array.isArray(data[field.id]) ? data[field.id] : [];
+          const columns = Array.isArray(field.columns) ? field.columns : [];
+          if (columns.length > 0) {
+            const header = columns.map(col => col.label || col.id);
+            const sheetRows = [header];
+            if (rowsData.length > 0) {
+              rowsData.forEach(row => {
+                const rowValues = columns.map(col => {
+                  const value = row && col ? row[col.id] : "";
+                  if (value === undefined || value === null) return "";
+                  return `${value}`;
+                });
+                sheetRows.push(rowValues);
+              });
+            } else {
+              sheetRows.push(columns.map(() => ""));
+            }
+            const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
+            sheet["!cols"] = autoFitColumnsFromRows(sheetRows);
+            const sheetName = ensureUniqueSheetName(label, usedSheetNames);
+            pendingSheets.push({ name: sheetName, sheet });
+            overviewRows.push([field.id, label, `Se bladet "${sheetName}"`]);
+          } else {
+            overviewRows.push([field.id, label, ""]);
+          }
+        } else if (field.type === "signature") {
+          const sigState = signaturePads[field.id];
+          const value = sigState && sigState.hiddenInput ? sigState.hiddenInput.value || "" : "";
+          if (value) {
+            const sheetRows = [
+              ["Beskrivning", "Värde"],
+              ["Data-URL (PNG)", value]
+            ];
+            const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
+            sheet["!cols"] = autoFitColumnsFromRows(sheetRows);
+            const sheetName = ensureUniqueSheetName(label || "Signatur", usedSheetNames);
+            pendingSheets.push({ name: sheetName, sheet });
+            overviewRows.push([field.id, label, `Signerad – se bladet "${sheetName}"`]);
+          } else {
+            overviewRows.push([field.id, label, "Ej signerad"]);
+          }
+        } else {
+          const value = formatFieldValueForExport(field, data);
+          overviewRows.push([field.id, label, value]);
+        }
+      });
+
+      if (data._submitted_at) {
+        overviewRows.push(["_submitted_at", "Formulär sparat", formatIsoToLocal(data._submitted_at)]);
+      }
+      overviewRows.push(["_exported_at", "Export skapad", formatIsoToLocal(new Date().toISOString())]);
+
+      const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
+      overviewSheet["!cols"] = autoFitColumnsFromRows(overviewRows);
+      XLSX.utils.book_append_sheet(workbook, overviewSheet, overviewName);
+
+      pendingSheets.forEach(entry => {
+        XLSX.utils.book_append_sheet(workbook, entry.sheet, entry.name);
+      });
+
+      return workbook;
+    }
+
+    function buildExcelFilename(data) {
+      const now = new Date();
+      const datePart = now.toISOString().split("T")[0];
+      const timePart = `${pad2(now.getHours())}${pad2(now.getMinutes())}`;
+      let rawName = typeof data.name === "string" ? data.name.trim() : "";
+      if (rawName && typeof rawName.normalize === "function") {
+        rawName = rawName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      }
+      let safe = rawName ? rawName.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "") : "";
+      if (safe) {
+        safe = safe.toLowerCase();
+        return `brf-styrelse-${safe}-${datePart}-${timePart}.xlsx`;
+      }
+      return `brf-styrelse-${datePart}-${timePart}.xlsx`;
+    }
+
+    function applyStateToForm(stateData) {
+      if (!stateData || typeof stateData !== "object") return;
+
+      formConfig.fields.forEach(field => {
+        if (field.state !== true) return;
+        if (field.type === "checkbox-group") {
+          const selectedValues = Array.isArray(stateData[field.id]) ? stateData[field.id] : [];
+          const whyMap = stateData[`${field.id}_varfor`] || {};
+          document.querySelectorAll(`input[name="${field.id}"]`).forEach(cb => {
+            const isChecked = selectedValues.includes(cb.value);
+            cb.checked = isChecked;
+            const whyId = `${cb.id}__why`;
+            const whyEl = document.getElementById(whyId);
+            if (whyEl) {
+              whyEl.disabled = !isChecked;
+              whyEl.value = isChecked ? (whyMap[cb.value] || "") : "";
+              if (field.whyMaxlength) updateCounter(whyId, field.whyMaxlength);
+            }
+          });
+
+          if (field.includeOtherText && field.otherTextId) {
+            const annatBox = document.getElementById(`${field.id}__annat`);
+            const otherEl = document.getElementById(field.otherTextId);
+            if (otherEl) {
+              const enabled = annatBox && annatBox.checked;
+              const stateValue = stateData[field.otherTextId] || "";
+              otherEl.disabled = !enabled;
+              otherEl.value = enabled ? stateValue : "";
+              if (field.otherTextMaxlength) updateCounter(field.otherTextId, field.otherTextMaxlength);
+            }
+          }
+        } else if (field.type === "multi-row") {
+          const rowsData = Array.isArray(stateData[field.id]) ? stateData[field.id] : [];
+          const stateObj = multiRowState[field.id];
+          if (!stateObj) return;
+
+          if (typeof stateObj.reset === "function") {
+            stateObj.reset();
+          }
+          while (stateObj.rowsWrap.childElementCount < rowsData.length) {
+            stateObj.addRow();
+          }
+          const rowEls = [...stateObj.rowsWrap.querySelectorAll("[data-row-index]")];
+          rowsData.forEach((rowData, idx) => {
+            const rowEl = rowEls[idx];
+            if (!rowEl) return;
+            const rowIndex = rowEl.dataset.rowIndex;
+            (field.columns || []).forEach(col => {
+              const inputId = `${field.id}__${rowIndex}__${col.id}`;
+              const inputEl = rowEl.querySelector(`#${inputId}`);
+              if (inputEl) {
+                inputEl.value = normalizeStateValueForInput(inputEl, rowData[col.id]);
+                if (col.maxlength) updateCounter(inputId, col.maxlength);
+              }
+            });
+          });
+          if (typeof stateObj.updateRowControls === "function") {
+            stateObj.updateRowControls();
+          }
+        } else if (field.type === "signature") {
+          const sigState = signaturePads[field.id];
+          if (!sigState) return;
+          const value = typeof stateData[field.id] === "string" ? stateData[field.id] : "";
+          sigState.loadDataUrl(value);
+        } else {
+          const inputEl = document.getElementById(field.id);
+          if (!inputEl) return;
+          if (stateData[field.id] !== undefined) {
+            inputEl.value = normalizeStateValueForInput(inputEl, stateData[field.id]);
+            if (field.maxlength) updateCounter(field.id, field.maxlength);
+          }
+        }
+      });
+    }
+
+    function loadStateFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const encoded = params.get("state");
+      if (!encoded) return;
+
+      try {
+        const state = decodeState(encoded);
+        applyStateToForm(state);
+        syncKonstHowManyOtherField();
+        showOK("Formuläret laddades från delningslänken.");
+      } catch (err) {
+        console.error("Kunde inte ladda state från URL", err);
+        showError("Delningslänken kunde inte läsas. Fortsätt gärna med att fylla i formuläret manuellt.");
+      }
+    }
+
+    /* =========================================================
+       KNAPPAR
+       ========================================================= */
+    document.getElementById("btnShare").addEventListener("click", async () => {
+      if (!validateForm()) return;
+      try {
+        const data = collectFormData();
+        if (!data) return;
+        await shareState(data);
+      } catch (err) {
+        console.error("Delning misslyckades", err);
+        showError("Kunde inte skapa delningslänk.");
+      }
+    });
+
+    const exportBtn = document.getElementById("btnExportExcel");
+    if (exportBtn) {
+      exportBtn.addEventListener("click", () => {
+        if (typeof XLSX !== "object" || !XLSX || !XLSX.utils || typeof XLSX.writeFile !== "function") {
+          showError("Excel-exportbiblioteket kunde inte laddas. Uppdatera sidan och försök igen.");
+          return;
+        }
+        if (!validateForm()) return;
+        const data = collectFormData();
+        if (!data) return;
+        try {
+          const workbook = buildExcelWorkbook(data);
+          const filename = buildExcelFilename(data);
+          XLSX.writeFile(workbook, filename);
+          showOK("Excel-fil skapades och laddades ned.");
+        } catch (err) {
+          console.error("Excel-export misslyckades", err);
+          showError("Kunde inte skapa Excel-fil.");
+        }
+      });
+    }
+
+    document.getElementById("btnReset").addEventListener("click", () => {
+      formEl.reset();
+      clearMessages();
+      clearFieldErrors();
+      // Nollställ räknare och disable:a varför-fält
+      formConfig.fields.forEach(f => {
+        if (f.type === "textarea" || f.type === "text" || f.type === "email" || f.type === "tel") {
+          if (f.maxlength) updateCounter(f.id, f.maxlength);
+        }
+        if (f.type === "multi-row") {
+          const state = multiRowState[f.id];
+          if (state && typeof state.reset === "function") {
+            state.reset();
+          }
+        }
+        if (f.type === "checkbox-group") {
+          (f.options || []).forEach(opt => {
+            const whyId = `${f.id}__${opt.value}__why`;
+            const why = document.getElementById(whyId);
+            if (why) { why.disabled = true; why.value = ""; if (f.whyMaxlength) updateCounter(whyId, f.whyMaxlength); }
+          });
+          if (f.includeOtherText && f.otherTextId) {
+            const other = document.getElementById(f.otherTextId);
+            if (other) { other.disabled = true; other.value = ""; if (f.otherTextMaxlength) updateCounter(f.otherTextId, f.otherTextMaxlength); }
+          }
+        }
+        if (f.type === "signature") {
+          const sigState = signaturePads[f.id];
+          if (sigState && typeof sigState.clear === "function") {
+            sigState.clear();
+          }
+        }
+      });
+      syncKonstHowManyOtherField();
+    });
+  </script>
+</body>
+</html>
