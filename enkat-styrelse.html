@@ -645,6 +645,20 @@
       }
     }
 
+    let fieldErrorFocusAssigned = false;
+
+    function resetFieldErrorFocus() {
+      fieldErrorFocusAssigned = false;
+    }
+
+    function markError(fieldId, message, focusEl) {
+      const shouldFocus = !fieldErrorFocusAssigned;
+      setFieldError(fieldId, message, focusEl, shouldFocus);
+      if (shouldFocus) {
+        fieldErrorFocusAssigned = true;
+      }
+    }
+
     function getFieldIdFromElement(element) {
       if (!element) return null;
       const directId = element.id || element.name || "";
@@ -1402,6 +1416,7 @@
     }
 
     function collectFormData() {
+      resetFieldErrorFocus();
       const data = {};
       for (const f of formConfig.fields) {
         const includeInState = f.state === true;
@@ -1477,15 +1492,7 @@
     function validateForm() {
       clearMessages();
       clearFieldErrors();
-
-      let focusAssigned = false;
-      const markError = (fieldId, noteMessage, focusEl) => {
-        const shouldFocus = !focusAssigned;
-        setFieldError(fieldId, noteMessage, focusEl, shouldFocus);
-        if (shouldFocus) {
-          focusAssigned = true;
-        }
-      };
+      resetFieldErrorFocus();
 
       const firstInvalid = formEl.querySelector(":invalid");
       if (firstInvalid) {
