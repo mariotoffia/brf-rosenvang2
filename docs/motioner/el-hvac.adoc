@@ -1,0 +1,50 @@
+:doctype: article
+:icons: font
+:lang: sv
+:toc: macro
+
+= Utredning av framtidsäkra energilösningar
+Mario Toffia <Lägenhetsnummer 60>
+
+[abstract]
+== Sammanfattning
+En motion för utredning av investering i solceller, batterilagring, AI-optimering av fjärrvärmesystemet samt intjäning genom frekvenshandel av el.
+
+
+== Bakgrund / Motivering
+
+Föreningens hyresgäster står för sina egna elkostnader, men föreningen kan genom gemensamma investeringar bidra till att minska dessa kostnader och samtidigt stärka föreningens långsiktiga ekonomi.  
+Genom att installera solceller, komplettera med batterilagring och införa AI-baserad styrning av fjärrvärmen kan den totala energiförbrukningen minska, effektuttaget optimeras och energikostnaderna för både hyresgäster och förening sänkas.  
+Dessutom kan batterilösningar användas för frekvenshandel (stödtjänster) på elmarknaden, vilket kan generera löpande intäkter som kommer föreningens medlemmar till godo.
+
+NOTE: Målet är att detta underlag ska ligga till grund för beslut vid årsstämman 2026 eller 2027.
+
+För att fatta ett välgrundat beslut krävs ett tekniskt och ekonomiskt underlag.  
+Föreningen bör därför låta oberoende aktörer genomföra simuleringar och kalkyler för att belysa investeringskostnader, besparingspotential och intjäningsmöjligheter.  
+
+== Föreslagna alternativ
+
+. Solceller med batterilagring  
+. Solceller med batterilagring och AI-optimering av fjärrvärmen  
+. Solceller med batterilagring, AI-optimering och intjäning genom frekvenshandel av el  
+
+TIP: Jag kan bidra med teknisk kompetens i arbetet, men eftersom jag arbetar inom området bör en oberoende granskare delta för att undvika *jäv*.
+
+== Förslag till beslut
+
+Att föreningen beslutar att genomföra en utredning av tre alternativ för att sänka elkostnader för hyresgäster och skapa framtida intäktsmöjligheter för föreningen:
+
+. Solceller med batterilagring  
+. Solceller med batterilagring och AI-optimering av fjärrvärmen  
+. Solceller med batterilagring, AI-optimering och intjäning via frekvenshandel av el  
+
+Att föreningen anlitar oberoende aktörer, till exempel Vettesol eller motsvarande, för att genomföra simuleringar och ta fram offerter inklusive beräknad återbetalningstid, besparingspotential och intjäningsmöjligheter.  
+
+Att undertecknad deltar i samordningen av utredningen, under förutsättning att en oberoende granskare utses för att säkerställa objektivitet.  
+
+Att målet är att ta fram ett beslutsunderlag som kan presenteras för stämman 2026 eller 2027.
+
+== Motionär
+
+*Mario Toffia*  
+Lägenhetsnummer 60
