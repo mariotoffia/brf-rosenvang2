@@ -33,6 +33,9 @@
       font-size: 0.875rem;
       margin-top: 0.35rem;
     }
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -181,7 +184,13 @@
 
         { id: "konst_how_many_other", state: true, label: "A1b. Annat antal (ange siffra)", type: "number", required: false,
           min: 1, max: 50, step: 1, placeholder: "Ange antal styrelseledamöter",
-          help: "Ange endast om du valde 'Annat' ovan."
+          help: "Ange endast om du valde 'Annat' ovan.",
+          conditional: {
+            enableWhen: [{ fieldId: "konst_how_many", values: ["other"] }],
+            requiredWhen: [{ fieldId: "konst_how_many", values: ["other"] }],
+            requiredMessage: "Ange antal om du valt 'Annat'.",
+            clearWhenDisabled: true
+          }
         },
 
         { id: "konst_term_length", state: true, label: "A2. Hur länge bör en mandatperiod för en styrelseledamot vara?", type: "select", required: true,
@@ -483,6 +492,10 @@
     const okBox = document.getElementById("okBox");
     const multiRowState = {};
     const signaturePads = {};
+    const fieldLabelMap = {};
+    const conditionalFieldConfigs = new Map();
+    const conditionalDependents = new Map();
+    const conditionalControllerListeners = new Map();
 
     function pad2(value) {
       return String(value).padStart(2, "0");
@@ -675,7 +688,12 @@
     function buildElementErrorMessage(field, element) {
       if (!element) return "Kontrollera detta fält.";
       const validity = element.validity || {};
-      if (validity.valueMissing) return "Fyll i detta obligatoriska fält.";
+      if (validity.valueMissing) {
+        if (element.dataset && element.dataset.conditionalRequiredMessage) {
+          return element.dataset.conditionalRequiredMessage;
+        }
+        return "Fyll i detta obligatoriska fält.";
+      }
       if (validity.typeMismatch) {
         if (element.type === "email") return "Ange en giltig e-postadress.";
         if (element.type === "url") return "Ange en giltig webbadress.";
@@ -702,16 +720,29 @@
     }
 
     function validateMultiRowFieldContent(field) {
+      if (!field) return { ok: true };
+      const wrap = getFieldWrapper(field.id);
+      if (wrap && (wrap.dataset.conditionalHidden === "true" || wrap.dataset.conditionalDisabled === "true")) {
+        return { ok: true };
+      }
       const state = multiRowState[field.id];
       const rowsWrap = state ? state.rowsWrap : document.getElementById(`${field.id}__rows`);
       const rows = rowsWrap ? [...rowsWrap.querySelectorAll("[data-row-index]")] : [];
-      const minRows = field.minRows !== undefined ? Math.max(field.minRows, 0) : (field.required ? 1 : 0);
+      const entry = conditionalFieldConfigs.get(field.id);
+      const configuredMinRows = entry && entry.dynamicMinRows !== undefined
+        ? entry.dynamicMinRows
+        : field.minRows;
+      const minRows = configuredMinRows !== undefined
+        ? Math.max(configuredMinRows, 0)
+        : (field.required ? 1 : 0);
       const maxRows = field.maxRows || Infinity;
       const focusElFallback = rowsWrap ? rowsWrap.querySelector("input, textarea, select, button") : null;
 
       if (minRows > 0 && rows.length < minRows) {
         const rowLabel = minRows === 1 ? "rad" : "rader";
-        const noteMessage = `Lägg till minst ${minRows} ${rowLabel}.`;
+        const defaultMessage = `Lägg till minst ${minRows} ${rowLabel}.`;
+        const customMessage = entry && entry.dynamicRequiredMessage;
+        const noteMessage = customMessage || defaultMessage;
         return {
           ok: false,
           noteMessage,
@@ -816,30 +847,492 @@
       }
     }
 
-    function syncKonstHowManyOtherField() {
-      const select = document.getElementById("konst_how_many");
-      const otherInput = document.getElementById("konst_how_many_other");
-      if (!select || !otherInput) return;
-      const enable = select.value === "other";
-      otherInput.disabled = !enable;
-      if (!enable) {
-        otherInput.value = "";
+    function getFieldWrapper(fieldId) {
+      if (!fieldId) return null;
+      return document.querySelector(`[data-field-wrap="${fieldId}"]`);
+    }
+
+    function updateFieldLabelRequiredState(fieldId, dynamicRequired) {
+      const entry = fieldLabelMap[fieldId];
+      if (!entry || !entry.element) return;
+      const isRequired = entry.staticRequired || !!dynamicRequired;
+      entry.element.innerHTML = `${entry.baseLabel}${isRequired ? ' <span class="text-red-600">*</span>' : ""}`;
+    }
+
+    function getFieldCurrentValue(fieldOrId) {
+      if (!fieldOrId) return undefined;
+      const field = typeof fieldOrId === "string" ? fieldLookup[fieldOrId] : fieldOrId;
+      if (!field) return undefined;
+
+      if (field.type === "checkbox-group") {
+        return [...document.querySelectorAll(`input[name="${field.id}"]`)]
+          .filter(box => box.checked)
+          .map(box => box.value);
+      }
+
+      if (field.type === "multi-row") {
+        const rowsWrap = document.getElementById(`${field.id}__rows`);
+        if (!rowsWrap) return [];
+        const rows = [];
+        rowsWrap.querySelectorAll("[data-row-index]").forEach(rowEl => {
+          const rowIndex = rowEl.dataset.rowIndex;
+          const rowData = {};
+          (field.columns || []).forEach(col => {
+            const inputName = `${field.id}__${rowIndex}__${col.id}`;
+            const input = rowEl.querySelector(`[name="${inputName}"]`);
+            if (input) {
+              rowData[col.id] = input.value || "";
+            }
+          });
+          rows.push(rowData);
+        });
+        return rows;
+      }
+
+      if (field.type === "signature") {
+        const sigState = signaturePads[field.id];
+        if (sigState && sigState.hiddenInput) {
+          return sigState.hiddenInput.value || "";
+        }
+        return "";
+      }
+
+      const input = document.getElementById(field.id);
+      if (!input) return "";
+      const value = input.value;
+
+      if (input.type === "number" && value !== "") {
+        const numeric = Number(value);
+        return Number.isNaN(numeric) ? value : numeric;
+      }
+
+      return value;
+    }
+
+    function valuesMatch(currentValue, targets) {
+      const arr = Array.isArray(targets) ? targets : [targets];
+      const normalizedTargets = arr.map(v => `${v}`);
+
+      if (Array.isArray(currentValue)) {
+        return currentValue.some(v => normalizedTargets.includes(`${v}`));
+      }
+
+      if (currentValue === undefined || currentValue === null) return false;
+      return normalizedTargets.includes(`${currentValue}`);
+    }
+
+    function evaluateCondition(condition) {
+      if (!condition || !condition.fieldId) return true;
+      const field = fieldLookup[condition.fieldId];
+      const value = getFieldCurrentValue(field);
+      let result;
+
+      if (Object.prototype.hasOwnProperty.call(condition, "values") || Object.prototype.hasOwnProperty.call(condition, "value")) {
+        const targets = condition.values !== undefined ? condition.values : condition.value;
+        result = valuesMatch(value, targets);
+      } else if (condition.test === "notEmpty") {
+        if (Array.isArray(value)) {
+          result = value.length > 0;
+        } else {
+          const str = value === undefined || value === null ? "" : `${value}`.trim();
+          result = str.length > 0;
+        }
+      } else if (condition.test === "empty") {
+        if (Array.isArray(value)) {
+          result = value.length === 0;
+        } else {
+          const str = value === undefined || value === null ? "" : `${value}`.trim();
+          result = str.length === 0;
+        }
+      } else if (condition.test === "truthy") {
+        result = !!value;
+      } else if (condition.test === "falsy") {
+        result = !value;
+      } else if (condition.operator && Object.prototype.hasOwnProperty.call(condition, "compareValue")) {
+        const numericValue = Number(Array.isArray(value) ? value.length : value);
+        const compareTo = Number(condition.compareValue);
+        if (Number.isNaN(numericValue) || Number.isNaN(compareTo)) {
+          result = false;
+        } else {
+          switch (condition.operator) {
+            case "gt": result = numericValue > compareTo; break;
+            case "gte": result = numericValue >= compareTo; break;
+            case "lt": result = numericValue < compareTo; break;
+            case "lte": result = numericValue <= compareTo; break;
+            case "eq": result = numericValue === compareTo; break;
+            case "neq": result = numericValue !== compareTo; break;
+            default: result = false;
+          }
+        }
+      } else {
+        if (Array.isArray(value)) {
+          result = value.length > 0;
+        } else {
+          const str = value === undefined || value === null ? "" : `${value}`.trim();
+          result = str.length > 0;
+        }
+      }
+
+      if (condition.not) {
+        result = !result;
+      }
+      return result;
+    }
+
+    function evaluateConditionGroup(group) {
+      if (!Array.isArray(group) || group.length === 0) return undefined;
+      for (const condition of group) {
+        if (!evaluateCondition(condition)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function resolveConditionalMessage(group, fallback) {
+      if (Array.isArray(group)) {
+        for (const condition of group) {
+          if (condition && typeof condition.message === "string" && condition.message.trim()) {
+            return condition.message.trim();
+          }
+        }
+      }
+      return typeof fallback === "string" ? fallback : "";
+    }
+
+    function setFieldVisibility(fieldId, isVisible) {
+      const wrap = getFieldWrapper(fieldId);
+      if (!wrap) return;
+      wrap.classList.toggle("hidden", !isVisible);
+      wrap.setAttribute("aria-hidden", isVisible ? "false" : "true");
+      if (!isVisible) {
+        wrap.dataset.conditionalHidden = "true";
+      } else {
+        delete wrap.dataset.conditionalHidden;
       }
     }
 
-    function setupConditionalFieldToggles() {
-      const select = document.getElementById("konst_how_many");
-      if (select) {
-        select.addEventListener("change", () => {
-          syncKonstHowManyOtherField();
-          clearFieldError("konst_how_many_other");
+    function clearFieldValue(field) {
+      if (!field) return;
+      if (field.type === "checkbox-group") {
+        (field.options || []).forEach(opt => {
+          const cb = document.getElementById(`${field.id}__${opt.value}`);
+          if (cb) cb.checked = false;
+          const whyId = `${field.id}__${opt.value}__why`;
+          const why = document.getElementById(whyId);
+          if (why) {
+            why.value = "";
+            why.disabled = true;
+            if (field.whyMaxlength) updateCounter(whyId, field.whyMaxlength);
+          }
         });
+        if (field.includeOtherText && field.otherTextId) {
+          const other = document.getElementById(field.otherTextId);
+          if (other) {
+            other.value = "";
+            other.disabled = true;
+            if (field.otherTextMaxlength) updateCounter(field.otherTextId, field.otherTextMaxlength);
+          }
+        }
+      } else if (field.type === "multi-row") {
+        const state = multiRowState[field.id];
+        if (state && typeof state.reset === "function") {
+          state.reset();
+        } else {
+          const rowsWrap = document.getElementById(`${field.id}__rows`);
+          if (rowsWrap) rowsWrap.innerHTML = "";
+        }
+      } else if (field.type === "signature") {
+        const sigState = signaturePads[field.id];
+        if (sigState && typeof sigState.clear === "function") {
+          sigState.clear();
+        }
+      } else {
+        const input = document.getElementById(field.id);
+        if (input) {
+          if (input.tagName === "SELECT") {
+            input.value = "";
+            if (input.options && input.options.length) {
+              input.selectedIndex = 0;
+            }
+          } else {
+            input.value = "";
+          }
+          if (field.maxlength) updateCounter(field.id, field.maxlength);
+        }
       }
-      syncKonstHowManyOtherField();
+    }
+
+    function setFieldDisabled(field, disabled, options = {}) {
+      if (!field) return;
+      const wrap = getFieldWrapper(field.id);
+      if (!wrap) return;
+
+      const shouldClear = !!options.clear;
+      wrap.classList.toggle("opacity-50", disabled);
+      if (disabled) {
+        wrap.dataset.conditionalDisabled = "true";
+      } else {
+        delete wrap.dataset.conditionalDisabled;
+      }
+
+      if (disabled && shouldClear) {
+        clearFieldValue(field);
+      }
+
+      if (field.type === "checkbox-group") {
+        const boxes = [...document.querySelectorAll(`input[name="${field.id}"]`)];
+        boxes.forEach(box => { box.disabled = disabled; });
+        (field.options || []).forEach(opt => {
+          const cb = document.getElementById(`${field.id}__${opt.value}`);
+          const why = document.getElementById(`${field.id}__${opt.value}__why`);
+          if (why) {
+            const enabled = !disabled && cb && cb.checked;
+            why.disabled = !enabled;
+          }
+        });
+        if (field.includeOtherText && field.otherTextId) {
+          const other = document.getElementById(field.otherTextId);
+          if (other) {
+            const annat = document.getElementById(`${field.id}__annat`);
+            const enabled = !disabled && annat && annat.checked;
+            other.disabled = !enabled;
+          }
+        }
+      } else if (field.type === "multi-row") {
+        wrap.querySelectorAll("input, textarea, select, button").forEach(el => {
+          if (el.type === "hidden") return;
+          el.disabled = disabled;
+        });
+      } else if (field.type === "signature") {
+        const sigState = signaturePads[field.id];
+        if (sigState) {
+          const canvas = sigState.canvas;
+          if (canvas) {
+            canvas.style.pointerEvents = disabled ? "none" : "";
+            canvas.classList.toggle("opacity-60", disabled);
+          }
+          const hiddenInput = sigState.hiddenInput;
+          if (hiddenInput) {
+            hiddenInput.disabled = disabled;
+          }
+          wrap.querySelectorAll("button").forEach(btn => { btn.disabled = disabled; });
+        }
+      } else {
+        const input = document.getElementById(field.id);
+        if (input) {
+          input.disabled = disabled;
+        }
+      }
+
+      if (disabled) {
+        clearFieldError(field.id);
+      }
+    }
+
+    function setFieldRequired(field, dynamicRequired, message) {
+      if (!field) return;
+      const entry = conditionalFieldConfigs.get(field.id);
+      if (entry) {
+        entry.dynamicRequired = !!dynamicRequired;
+        if (message) {
+          entry.dynamicRequiredMessage = message;
+        } else {
+          delete entry.dynamicRequiredMessage;
+        }
+      }
+
+      const labelEntry = fieldLabelMap[field.id];
+      const staticRequired = labelEntry ? labelEntry.staticRequired : !!field.required;
+      const finalRequired = staticRequired || !!dynamicRequired;
+
+      if (field.type === "checkbox-group") {
+        if (entry) {
+          if (dynamicRequired) {
+            entry.dynamicMinChecked = Math.max(1, field.minChecked || 0);
+          } else if (Object.prototype.hasOwnProperty.call(field, "minChecked")) {
+            entry.dynamicMinChecked = field.minChecked;
+          } else {
+            delete entry.dynamicMinChecked;
+          }
+        }
+      } else if (field.type === "multi-row") {
+        if (entry) {
+          entry.dynamicMinRows = dynamicRequired ? Math.max(1, field.minRows || 0) : field.minRows;
+        }
+      } else if (field.type === "signature") {
+        const sigState = signaturePads[field.id];
+        if (sigState && sigState.hiddenInput) {
+          sigState.hiddenInput.required = finalRequired;
+          if (!finalRequired) {
+            sigState.hiddenInput.setCustomValidity("");
+          }
+        }
+      } else {
+        const input = document.getElementById(field.id);
+        if (input) {
+          input.required = finalRequired;
+          if (dynamicRequired && message) {
+            input.dataset.conditionalRequiredMessage = message;
+          } else {
+            delete input.dataset.conditionalRequiredMessage;
+          }
+          if (!finalRequired) {
+            input.setCustomValidity("");
+          }
+        }
+      }
+
+      if (labelEntry) {
+        updateFieldLabelRequiredState(field.id, dynamicRequired);
+      }
+    }
+
+    function applyConditionalState(fieldId) {
+      const entry = conditionalFieldConfigs.get(fieldId);
+      if (!entry) return;
+      const { field, config } = entry;
+
+      const enableEval = evaluateConditionGroup(config.enableWhen);
+      let isEnabled = typeof enableEval === "undefined" ? true : enableEval;
+
+      const disableEval = evaluateConditionGroup(config.disableWhen);
+      if (typeof disableEval === "boolean" && disableEval) {
+        isEnabled = false;
+      }
+
+      const visibleEval = evaluateConditionGroup(config.visibleWhen);
+      let isVisible = typeof visibleEval === "undefined" ? true : visibleEval;
+
+      const hiddenEval = evaluateConditionGroup(config.hiddenWhen);
+      if (typeof hiddenEval === "boolean" && hiddenEval) {
+        isVisible = false;
+      }
+
+      setFieldVisibility(field.id, isVisible);
+
+      const shouldDisable = !isEnabled || !isVisible;
+      const clearWhenDisabled = config.clearWhenDisabled !== false;
+      setFieldDisabled(field, shouldDisable, { clear: shouldDisable && clearWhenDisabled });
+
+      if (shouldDisable) {
+        setFieldRequired(field, false, "");
+        return;
+      }
+
+      const requireEval = evaluateConditionGroup(config.requiredWhen);
+      const shouldRequire = requireEval === true;
+      const requiredMessage = resolveConditionalMessage(config.requiredWhen, config.requiredMessage);
+      setFieldRequired(field, shouldRequire, requiredMessage);
+    }
+
+    function refreshConditionalDependents(controllerId) {
+      const dependents = conditionalDependents.get(controllerId);
+      if (!dependents) return;
+      dependents.forEach(depId => applyConditionalState(depId));
+    }
+
+    function refreshAllConditionalFields() {
+      conditionalFieldConfigs.forEach((_, fieldId) => applyConditionalState(fieldId));
+    }
+
+    function collectConditionalControllerIds(config) {
+      const ids = new Set();
+      ["enableWhen", "disableWhen", "requiredWhen", "visibleWhen", "hiddenWhen"].forEach(key => {
+        const arr = Array.isArray(config[key]) ? config[key] : [];
+        arr.forEach(cond => {
+          if (cond && cond.fieldId) {
+            ids.add(cond.fieldId);
+          }
+        });
+      });
+      return [...ids];
+    }
+
+    function registerConditionalField(field) {
+      if (!field || !field.conditional) return;
+      const config = field.conditional || {};
+      const entry = {
+        field,
+        config,
+        dynamicRequired: false,
+        dynamicRequiredMessage: config.requiredMessage || "",
+      };
+      if (Object.prototype.hasOwnProperty.call(field, "minChecked")) {
+        entry.dynamicMinChecked = field.minChecked;
+      }
+      if (Object.prototype.hasOwnProperty.call(field, "minRows")) {
+        entry.dynamicMinRows = field.minRows;
+      }
+      conditionalFieldConfigs.set(field.id, entry);
+
+      const controllers = collectConditionalControllerIds(config);
+      controllers.forEach(controllerId => {
+        if (!conditionalDependents.has(controllerId)) {
+          conditionalDependents.set(controllerId, new Set());
+        }
+        conditionalDependents.get(controllerId).add(field.id);
+      });
+    }
+
+    function attachConditionalListeners(controllerId) {
+      if (!controllerId || conditionalControllerListeners.has(controllerId)) return;
+      const field = fieldLookup[controllerId];
+      if (!field) return;
+
+      const handler = () => refreshConditionalDependents(controllerId);
+      conditionalControllerListeners.set(controllerId, handler);
+
+      if (field.type === "checkbox-group") {
+        document.querySelectorAll(`input[name="${field.id}"]`).forEach(el => {
+          el.addEventListener("change", handler);
+        });
+      } else if (field.type === "multi-row") {
+        const rowsWrap = document.getElementById(`${field.id}__rows`);
+        if (rowsWrap) {
+          rowsWrap.addEventListener("input", handler);
+          rowsWrap.addEventListener("change", handler);
+        }
+      } else if (field.type === "signature") {
+        const sigState = signaturePads[field.id];
+        if (sigState && !sigState._conditionalProxy) {
+          const originalUpdateValue = sigState.updateValue;
+          sigState.updateValue = (...args) => {
+            const result = originalUpdateValue.apply(sigState, args);
+            handler();
+            return result;
+          };
+          sigState._conditionalProxy = true;
+        }
+      } else {
+        const input = document.getElementById(field.id);
+        if (input) {
+          input.addEventListener("change", handler);
+          input.addEventListener("input", handler);
+        }
+      }
+    }
+
+    function initializeConditionalLogic() {
+      conditionalFieldConfigs.clear();
+      conditionalDependents.clear();
+
+      formConfig.fields.forEach(field => {
+        if (field && field.conditional) {
+          registerConditionalField(field);
+        }
+      });
+
+      conditionalDependents.forEach((_, controllerId) => {
+        attachConditionalListeners(controllerId);
+      });
+
+      refreshAllConditionalFields();
     }
 
     // Rendera fält
     function renderFields() {
+      Object.keys(fieldLabelMap).forEach(key => { delete fieldLabelMap[key]; });
       teardownSignaturePads();
       fieldsEl.innerHTML = "";
       Object.keys(multiRowState).forEach(key => delete multiRowState[key]);
@@ -859,6 +1352,11 @@
           : !!field.required;
         label.innerHTML = `${field.label}${labelIsRequired ? ' <span class="text-red-600">*</span>' : ""}`;
         wrap.appendChild(label);
+        fieldLabelMap[field.id] = {
+          element: label,
+          baseLabel: field.label,
+          staticRequired: labelIsRequired
+        };
 
         let inputEl = null;
         let counterEl = null;
@@ -1364,7 +1862,7 @@
     }
 
     renderFields();
-    setupConditionalFieldToggles();
+    initializeConditionalLogic();
 
     // Init counters on load
     window.addEventListener("load", () => {
@@ -1523,14 +2021,27 @@
       }
 
       for (const f of formConfig.fields) {
+        const wrap = getFieldWrapper(f.id);
+        const isHidden = wrap && wrap.dataset.conditionalHidden === "true";
+        const isDisabled = wrap && wrap.dataset.conditionalDisabled === "true";
+        if (isHidden || isDisabled) {
+          continue;
+        }
         if (f.type === "checkbox-group") {
           const checkboxes = [...document.querySelectorAll(`input[name="${f.id}"]`)];
           const checked = checkboxes.filter(b => b.checked).length;
-          const min = typeof f.minChecked === "number" ? Math.max(f.minChecked, 0) : 0;
+          const entry = conditionalFieldConfigs.get(f.id);
+          const dynamicMin = entry && entry.dynamicMinChecked !== undefined
+            ? entry.dynamicMinChecked
+            : undefined;
+          const min = dynamicMin !== undefined
+            ? Math.max(dynamicMin, 0)
+            : (typeof f.minChecked === "number" ? Math.max(f.minChecked, 0) : 0);
           const max = typeof f.maxChecked === "number" ? f.maxChecked : Infinity;
 
           if (checked < min) {
-            const noteMessage = min === 1 ? "Välj minst ett alternativ." : `Välj minst ${min} alternativ.`;
+            const customMessage = entry && entry.dynamicRequiredMessage;
+            const noteMessage = customMessage || (min === 1 ? "Välj minst ett alternativ." : `Välj minst ${min} alternativ.`);
             const globalMessage = `${f.label}: ${noteMessage}`;
             const focusEl = checkboxes[0] || null;
             markError(f.id, noteMessage, focusEl);
@@ -1587,29 +2098,6 @@
             showError(globalMessage);
             return false;
           }
-        }
-      }
-
-      const howManySelect = document.getElementById("konst_how_many");
-      if (howManySelect && howManySelect.value === "other") {
-        const otherInput = document.getElementById("konst_how_many_other");
-        const rawValue = otherInput ? (otherInput.value || "").trim() : "";
-        const numeric = Number(rawValue);
-        if (!rawValue) {
-          const noteMessage = "Ange antal om du valt 'Annat'.";
-          const focusEl = otherInput || howManySelect;
-          markError("konst_how_many_other", noteMessage, focusEl);
-          const label = (fieldLookup.konst_how_many && fieldLookup.konst_how_many.label) || "A1";
-          showError(`${label}: ${noteMessage}`);
-          return false;
-        }
-        if (!Number.isFinite(numeric) || numeric < 1) {
-          const noteMessage = "Ange ett giltigt positivt heltal.";
-          const focusEl = otherInput || howManySelect;
-          markError("konst_how_many_other", noteMessage, focusEl);
-          const label = (fieldLookup.konst_how_many && fieldLookup.konst_how_many.label) || "A1";
-          showError(`${label}: ${noteMessage}`);
-          return false;
         }
       }
 
@@ -1993,7 +2481,6 @@
       try {
         const state = decodeState(encoded);
         applyStateToForm(state);
-        syncKonstHowManyOtherField();
         showOK("Formuläret laddades från delningslänken.");
       } catch (err) {
         console.error("Kunde inte ladda state från URL", err);
@@ -2071,7 +2558,7 @@
           }
         }
       });
-      syncKonstHowManyOtherField();
+      refreshAllConditionalFields();
     });
   </script>
 </body>
