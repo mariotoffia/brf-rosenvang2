@@ -114,7 +114,7 @@
           type: "multi-row",
           required: true,
           minRows: 0,
-          maxRows: 6,
+          maxRows: 2,
           columns: [
             { id: "from", label: "Från", type: "date", required: true },
             { id: "to", label: "Till", type: "date", required: true },
@@ -122,7 +122,7 @@
             { id: "role", label: "Roll", type: "text", required: true, maxlength: 40, placeholder: "T.ex. ledamot" },
             { id: "competence", label: "Kompetens", type: "text", required: true, maxlength: 50, placeholder: "energi och optimering av uppvärmningskostnad" }
           ],
-          help: "Lägg till en rad per uppdrag. Använd 'Lägg till rad' för fler uppdrag (max 6 rader)."
+          help: "Lägg till en rad per uppdrag. Använd 'Lägg till rad' för fler uppdrag (max 2)."
         },
 
         { id: "competences", state: true, label: "6. Kompetens (välj upp till två) + varför", type: "checkbox-group",
@@ -171,38 +171,7 @@
         { id: "ovrigt", state: true, label: "9. Ytterligare kommentar", type: "textarea", required: false, maxlength: 300,
           help: "Kort fakta (max ~50 ord).", rows: 3
         },
-
-        { id: "konst_how_many", state: true, label: "A1. Hur många styrelseledamöter tycker du är optimalt i vår organisation?", type: "select", required: true,
-          options: [
-            { value: "7", text: "7" },
-            { value: "9", text: "9" },
-            { value: "11", text: "11" },
-            { value: "other", text: "Annat (ange antal nedan)" }
-          ],
-          help: "Om du väljer 'Annat', fyll i fältet nedan."
-        },
-
-        { id: "konst_how_many_other", state: true, label: "A1b. Annat antal (ange siffra)", type: "number", required: false,
-          min: 1, max: 50, step: 1, placeholder: "Ange antal styrelseledamöter",
-          help: "Ange endast om du valde 'Annat' ovan.",
-          conditional: {
-            enableWhen: [{ fieldId: "konst_how_many", values: ["other"] }],
-            requiredWhen: [{ fieldId: "konst_how_many", values: ["other"] }],
-            requiredMessage: "Ange antal om du valt 'Annat'.",
-            clearWhenDisabled: true
-          }
-        },
-
-        { id: "konst_term_length", state: true, label: "A2. Hur länge bör en mandatperiod för en styrelseledamot vara?", type: "select", required: true,
-          options: [
-            { value: "1", text: "1 år" },
-            { value: "2", text: "2 år" },
-            { value: "3", text: "3 år" }
-          ],
-          help: "Beskriv önskad längd i år"
-        },
-
-        { id: "konst_reelection", state: true, label: "A3. Ska styrelseledamöter kunna omväljas? Ange antal mandatperioder i rad.", type: "select", required: true,
+        { id: "konst_reelection", state: true, label: "A1. Ska styrelseledamöter kunna omväljas? Ange antal mandatperioder i rad.", type: "select", required: true,
           options: [
             { value: "1", text: "Ja, max 1 mandatperiod" },
             { value: "2", text: "Ja, max 2 mandatperioder" },
@@ -213,7 +182,7 @@
           help: "Välj antal eller 'Nej' om omval inte ska vara möjligt."
         },
 
-        { id: "konst_meeting_frequency", state: true, label: "A4. Vilken mötesfrekvens tycker du är lämplig för styrelsen?", type: "select", required: true,
+        { id: "konst_meeting_frequency", state: true, label: "A2. Vilken mötesfrekvens tycker du är lämplig för styrelsen?", type: "select", required: true,
           options: [
             { value: "veckovis", text: "Veckovis" },
             { value: "månadsvis", text: "Månadsvis" },
@@ -222,7 +191,7 @@
           help: "Ange uppskattad frekvens, t.ex. månatligen."
         },
 
-        { id: "konst_workload", state: true, label: "A5. Hur mycket arbetstid/resursinsats förväntar du dig från en styrelseledamot?", type: "select", required: true,
+        { id: "konst_workload", state: true, label: "A3. Hur mycket arbetstid/resursinsats förväntar du dig från en styrelseledamot?", type: "select", required: true,
           options: [
             { value: "10", text: "10 timmar per kvartal" },
             { value: "20", text: "20 timmar per kvartal" },
@@ -443,7 +412,7 @@
           id: "opinions",
           label: "A. Styrelsens sammansättning & grundläggande strukturer",
           description: "Bedömning av styrelsens storlek, mandatperioder och arbetsinsats.",
-          fieldIds: ["konst_how_many", "konst_how_many_other", "konst_term_length", "konst_reelection", "konst_meeting_frequency", "konst_workload"]
+          fieldIds: ["konst_reelection", "konst_meeting_frequency", "konst_workload"]
         },
         {
           id: "roles",
